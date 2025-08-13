@@ -1,0 +1,21 @@
+venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+.env
+.DS_Store 
+tests/__pycache__/
+
+
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+
+# Virtual environment
+venv/
+
+# Alembic-generated caches (optional but safe)
+alembic/versions/__pycache__/
+
+# Custom files
+future copy.txt
