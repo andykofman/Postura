@@ -1,24 +1,27 @@
-*** Begin Patch
-*** Add File: docs/knowledge-base/ARCHITECTURE.md
+
+
 # Architecture (Current)
 
-High-level components:
-
 - `pose/`
-  - `backend.py`: `PoseBackend` wrapping MediaPipe BlazePose (CPU), returns 33 normalized keypoints.
-  - `draw.py`: Utilities to draw keypoints and connections; video rendering with OpenCV.
-  - `smoothing.py`: (reserved) smoothing/filtering (currently empty).
-- `analysis/`:
-  - `analyzer.py`: dataclasses and result handling for keypoints (currently focused on types).
-  - `features.py`, `fsm_pushup.py`, `fsm_squat.py`: stubs/placeholders for future analysis.
-- `api/`: scaffolding for a future API (files present but empty).
-- `tests/`:
-  - Unit tests use fake models to avoid MediaPipe dependency.
-  - Integration test uses real MediaPipe + OpenCV on `tests/input.mp4` (or `demo/input.mp4`).
+  - `backend.py`: `PoseBackend` wrapping MediaPipe BlazePose (CPU).
+  - `draw.py`: drawing utilities and annotated video rendering with OpenCV.
+  - `smoothing.py`: per-joint EMA smoother (`EmaSmoother`) that treats None/low-confidence
+    joints as missing and outputs NaN for those, along with a validity mask.
+- `analysis/`
+  - `analyzer.py`: dataclasses and types for keypoints.
+  - `features.py`: geometric features with NaN-safe behavior:
+    - `angle(A,B,C)` returns radians at B; NaN on invalid inputs
+    - `horiz_offset(knee, ankle)` signed x-offset; NaN on invalid
+    - `collinearity_residual(hip, shoulder, ankle)` signed perpendicular distance; NaN on invalid
+  - `fsm_pushup.py`, `fsm_squat.py`: placeholders.
+- `api/`: scaffolding for a future API.
+- `tests/`
+  - Unit tests use fake models (no MediaPipe).
+  - Integration test uses real MediaPipe + OpenCV.
 
-Data flow (typical batch run):
+Flow:
+
 1) Read frames with OpenCV.
-2) Inference via `PoseBackend` (BGR→RGB inside).
-3) Draw keypoints/links and write annotated video.
-4) Optionally compute features/metrics (future).
-*** End Patch
+2) Inference via `PoseBackend` (BGR→RGB internally).
+3) Draw keypoints/links and write video.
+4) Compute features/metrics from smoothed keypoints (NaNs propagate to signal invalid segments).
