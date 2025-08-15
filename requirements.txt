@@ -1,0 +1,8 @@
+# Top-level runtime and test dependencies for Postura
+# Keep in sync with constraints.txt for determinism.
+
+numpy==1.26.4
+mediapipe==0.10.14
+opencv-python==4.10.0.84
+pytest==8.2.2
+protobuf==4.25.3

@@ -1,0 +1,15 @@
+
+# Strict constraints for critical dependencies.
+# This set is intentionally minimal to avoid over-constraining; regenerate later with pip-tools when ready.
+
+# Top-level (duplicate pins are intentional to enforce exact versions)
+numpy==1.26.4
+mediapipe==0.10.14
+opencv-python-headless==4.10.0.84
+pytest==8.2.2
+
+# Critical transitives for MediaPipe compatibility
+protobuf==4.25.3
+absl-py==2.1.0
+attrs==24.2.0
+flatbuffers==23.5.26
