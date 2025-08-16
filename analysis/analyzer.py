@@ -117,6 +117,14 @@ def analyze_video(frames_iter: Iterable[Sequence[Optional[Keypoint]]]) -> Dict[s
     squat_good = 0
     push_good = 0
 
+    # Form assessment accumulators within the bottom phase of a rep
+    prev_squat_in_bottom = False
+    prev_push_in_bottom = False
+    squat_min_knee_deg_current = float("inf")
+    squat_max_align_abs_current = 0.0
+    push_min_elbow_deg_current = float("inf")
+    push_max_align_abs_current = 0.0
+
     for frame_idx, keypoints in enumerate(frames_iter):
         smoothed, mask = smoother.update(keypoints)
 
@@ -179,17 +187,39 @@ def analyze_video(frames_iter: Iterable[Sequence[Optional[Keypoint]]]) -> Dict[s
         ev_push = pushup_fsm.process_frame(features, frame_idx=frame_idx)
         ev_squat = squat_fsm.process_frame(features, frame_idx=frame_idx)
 
+        # Determine current bottom states
+        cur_squat_in_bottom = bool(ev_squat.get("flags", {}).get("in_bottom", False))
+        cur_push_in_bottom = bool(ev_push.get("flags", {}).get("in_bottom", False))
+
+        # Update within-phase accumulators using this frame's measurements
+        knee_degree_cur = float(np.degrees(knee_theta)) if np.isfinite(knee_theta) else float("nan")
+        elbow_degree_cur = float(np.degrees(elbow_theta)) if np.isfinite(elbow_theta) else float("nan")
+        align_abs_cur = abs(align_resid) if np.isfinite(align_resid) else float("nan")
+
+        if cur_squat_in_bottom:
+            if np.isfinite(knee_degree_cur):
+                squat_min_knee_deg_current = min(squat_min_knee_deg_current, knee_degree_cur)
+            if np.isfinite(align_abs_cur):
+                squat_max_align_abs_current = max(squat_max_align_abs_current, align_abs_cur)
+        else:
+            # If we just exited bottom (prev True -> cur False), we keep accumulators for evaluation below
+            pass
+
+        if cur_push_in_bottom:
+            if np.isfinite(elbow_degree_cur):
+                push_min_elbow_deg_current = min(push_min_elbow_deg_current, elbow_degree_cur)
+            if np.isfinite(align_abs_cur):
+                push_max_align_abs_current = max(push_max_align_abs_current, align_abs_cur)
+        else:
+            pass
+
         # On rep completion, emit a record matching assignment schema
         if ev_squat.get("rep_event") == "rep_complete":
             squat_rep_id += 1
-            # Define form OK heuristics at event time
-            # Form Assessment:
-            # 1. Knee angle is less than 110 degrees
-            # 2. Alignment residual is less than 0.05
-            knee_degree = float(np.degrees(features["knee_angle"])) if np.isfinite(features["knee_angle"]) else float("nan")
-            align_resid = float(features["hip_shoulder_ankle_collinearity"]) if np.isfinite(features["hip_shoulder_ankle_collinearity"]) else float("nan")
-            # Form quality heuristics
-            is_ok = (np.isfinite(knee_degree) and knee_degree <= 110.0) and (np.isfinite(align_resid) and abs(align_resid) <= 0.05)
+            # Evaluate form using the minimum knee angle observed during the bottom phase
+            knee_degree = squat_min_knee_deg_current
+            align_max_abs = squat_max_align_abs_current
+            is_ok = (np.isfinite(knee_degree) and knee_degree <= 110.0) and (np.isfinite(align_max_abs) and align_max_abs <= 0.05)
             if is_ok:
                 squat_good += 1
             frame_records.append(
@@ -201,12 +231,15 @@ def analyze_video(frames_iter: Iterable[Sequence[Optional[Keypoint]]]) -> Dict[s
                     "angles": {"knee": knee_degree},
                 }
             )
+            # Reset accumulators for next squat rep
+            squat_min_knee_deg_current = float("inf")
+            squat_max_align_abs_current = 0.0
 
         if ev_push.get("rep_event") == "rep_complete":
             push_rep_id += 1
-            elbow_deg = float(np.degrees(features["elbow_angle"])) if np.isfinite(features["elbow_angle"]) else float("nan")
-            align_resid = float(features["hip_shoulder_ankle_collinearity"]) if np.isfinite(features["hip_shoulder_ankle_collinearity"]) else float("nan")
-            is_ok = (np.isfinite(elbow_deg) and elbow_deg <= 90.0) and (np.isfinite(align_resid) and abs(align_resid) <= 0.05)
+            elbow_deg = push_min_elbow_deg_current
+            align_max_abs = push_max_align_abs_current
+            is_ok = (np.isfinite(elbow_deg) and elbow_deg <= 90.0) and (np.isfinite(align_max_abs) and align_max_abs <= 0.05)
             if is_ok:
                 push_good += 1
             frame_records.append(
@@ -218,6 +251,9 @@ def analyze_video(frames_iter: Iterable[Sequence[Optional[Keypoint]]]) -> Dict[s
                     "angles": {"elbow": elbow_deg},
                 }
             )
+            # Reset accumulators for next pushup rep
+            push_min_elbow_deg_current = float("inf")
+            push_max_align_abs_current = 0.0
 
     # Summaries and common issues (heuristics)
     push_summary: Dict[str, object] = {"total_reps": pushup_fsm.state.reps, "good_form_reps": push_good, "common_issues": []}

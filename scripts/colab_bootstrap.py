@@ -139,7 +139,7 @@ def main() -> None:
 	ensure_pip_packages()
 	verify_imports()
 	check_protobuf_version()
-	if args.run-mp-smoke:
+	if args.run_mp_smoke:
 		mediapipe_smoke_test()
 
 	if args.force_runtime_restart and is_colab():

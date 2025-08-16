@@ -3,6 +3,7 @@
 
 numpy==1.26.4
 mediapipe==0.10.14
-opencv-python==4.10.0.84
+opencv-python-headless==4.10.0.84
 pytest==8.2.2
-protobuf==4.25.3
+fastapi==0.112.2
+uvicorn==0.30.6

@@ -1,0 +1,100 @@
+from __future__ import annotations
+
+import io
+import os
+from pathlib import Path
+from typing import List, Optional
+
+import numpy as np
+from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+
+from analysis.analyzer import analyze_video
+from api.schemas import AnalyzeResponse, Summary, ExerciseSummary, FrameRecord
+from pose.backend import PoseBackend
+
+
+app = FastAPI(title="Postura API")
+
+
+MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
+ALLOWED_CONTENT_TYPES = {"video/mp4", "application/octet-stream"}
+
+# Mount static web UI and reports directory for end-to-end testing
+WEB_ROOT = Path("web").resolve()
+REPORT_ROOT = Path("report").resolve()
+REPORT_ROOT.mkdir(parents=True, exist_ok=True)
+if WEB_ROOT.exists():
+    app.mount("/ui", StaticFiles(directory=str(WEB_ROOT), html=True), name="ui")
+app.mount("/reports", StaticFiles(directory=str(REPORT_ROOT)), name="reports")
+
+
+def _iter_frames_from_video_bytes(data: bytes):
+    import cv2  # type: ignore
+    tmp_dir = Path("/tmp")
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    tmp_path = tmp_dir / "upload.mp4"
+    with open(tmp_path, "wb") as f:
+        f.write(data)
+
+    cap = cv2.VideoCapture(str(tmp_path))
+    if not cap.isOpened():
+        raise RuntimeError("Failed to open uploaded video")
+
+    # Build backend with fallback when mediapipe is unavailable (e.g., unit tests)
+    backend: Optional[PoseBackend]
+    try:
+        backend = PoseBackend()
+    except ImportError:
+        class _NoModel:
+            def process(self, frame_rgb):
+                class _R:
+                    pose_landmarks = None
+                return _R()
+        backend = PoseBackend(pose_model=_NoModel())
+
+    try:
+        with backend as b:
+            while True:
+                ok, frame = cap.read()
+                if not ok:
+                    break
+                kps = b.infer(frame)
+                yield kps
+    finally:
+        cap.release()
+
+
+@app.post("/analyze", response_model=AnalyzeResponse)
+async def analyze(file: UploadFile = File(...)):
+    # Validate content type
+    content_type = file.content_type or ""
+    if content_type not in ALLOWED_CONTENT_TYPES and not file.filename.lower().endswith(".mp4"):
+        raise HTTPException(status_code=415, detail="Unsupported media type; expected MP4")
+
+    # Size guard
+    body = await file.read()
+    if len(body) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File too large; max 50MB")
+
+    # Decode and analyze
+    try:
+        frames_iter = _iter_frames_from_video_bytes(body)
+        result = analyze_video(frames_iter)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Failed to analyze video: {exc}")
+
+    # Persist report
+    video_id = str(result.get("video_id"))
+    report_dir = Path("report") / video_id
+    report_dir.mkdir(parents=True, exist_ok=True)
+    # Write JSON
+    import json
+
+    with open(report_dir / "summary.json", "w", encoding="utf-8") as f:
+        json.dump(result, f, ensure_ascii=False, indent=2)
+
+    return JSONResponse(content=result)
+
+

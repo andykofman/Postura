@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Postura – Web UI</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 24px; }
+      .card { max-width: 900px; padding: 16px; border: 1px solid #ddd; border-radius: 10px; }
+      .row { margin: 10px 0; }
+      button { padding: 8px 16px; }
+      pre { background: #fafafa; padding: 12px; border-radius: 8px; overflow: auto; }
+      .muted { color: #666; }
+      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h2>Postura – Analyze</h2>
+      <div class="row">
+        <input id="file" type="file" accept="video/mp4" />
+        <button id="btn">Analyze</button>
+        <span class="muted">Max 50MB MP4</span>
+      </div>
+      <div class="row" id="reportLink"></div>
+      <div class="grid">
+        <div>
+          <h3>Response</h3>
+          <pre id="out"></pre>
+        </div>
+        <div>
+          <h3>Saved Summary</h3>
+          <pre id="saved"></pre>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      async function analyze() {
+        const input = document.getElementById('file');
+        const out = document.getElementById('out');
+        const saved = document.getElementById('saved');
+        const link = document.getElementById('reportLink');
+        if (!input.files.length) { alert('Select an MP4 file'); return; }
+        const file = input.files[0];
+        const form = new FormData();
+        form.append('file', file, file.name);
+        out.textContent = 'Uploading and analyzing...';
+        saved.textContent = '';
+        link.textContent = '';
+        try {
+          const resp = await fetch('/analyze', { method: 'POST', body: form });
+          const text = await resp.text();
+          let data;
+          try { data = JSON.parse(text); } catch (e) { out.textContent = text; return; }
+          out.textContent = JSON.stringify(data, null, 2);
+          if (!resp.ok) return;
+          if (data && data.video_id) {
+            const href = `/reports/${data.video_id}/summary.json`;
+            link.innerHTML = `<a href="${href}" target="_blank">Open saved summary.json</a>`;
+            try {
+              const s = await fetch(href);
+              if (s.ok) {
+                const js = await s.json();
+                saved.textContent = JSON.stringify(js, null, 2);
+              }
+            } catch {}
+          }
+        } catch (err) {
+          out.textContent = String(err);
+        }
+      }
+      document.getElementById('btn').addEventListener('click', analyze);
+    </script>
+  </body>
+  </html>
+
+
