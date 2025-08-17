@@ -57,6 +57,10 @@ def _iter_frames_from_video_bytes(
     target_fps: Optional[float] = None,
     target_width: Optional[int] = None,
     model_complexity: int = 2,
+    adaptive_motion: bool = False,
+    motion_resize_width: int = 0,
+    motion_threshold: float = 0.0,
+    max_consecutive_skips: int = 0,
 ) -> Iterator[Sequence[Optional[Keypoint]]]:
     import cv2  # type: ignore
     _configure_opencv_threads()
@@ -81,16 +85,50 @@ def _iter_frames_from_video_bytes(
     def producer() -> None:
         try:
             idx = 0
+            last_small = None
+            skipped = 0
             while True:
                 ok, frame = cap.read()
                 if not ok:
                     break
+                send = True
                 # Decimate frames to target_fps if configured
-                if stride > 1:
-                    if (idx % stride) != 0:
-                        idx += 1
-                        continue
+                if stride > 1 and (idx % stride) != 0:
+                    send = False
+                # Motion-adaptive override (fast mode): if motion is high, force send
+                if adaptive_motion:
+                    try:
+                        import cv2  # type: ignore
+                        small_w = motion_resize_width or 0
+                        if small_w > 0:
+                            h, w = frame.shape[:2]
+                            scale = float(small_w) / float(w)
+                            new_w = small_w
+                            new_h = max(1, int(round(h * scale)))
+                            small = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_AREA)
+                        else:
+                            small = frame
+                        gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
+                        if last_small is None:
+                            motion_score = 999.0
+                        else:
+                            # mean absolute difference
+                            diff = cv2.absdiff(gray, last_small)
+                            motion_score = float(diff.mean())
+                        # Decide to send if motion is strong or we already skipped several frames
+                        if not send and (motion_score >= motion_threshold or skipped >= max_consecutive_skips):
+                            send = True
+                        if send:
+                            last_small = gray
+                        else:
+                            skipped += 1
+                    except Exception:
+                        # If motion calc fails, fall back to decimation decision
+                        pass
                 idx += 1
+                if not send:
+                    continue
+                skipped = 0
                 # Resize to target_width if configured
                 if target_width and target_width > 0:
                     h, w = frame.shape[:2]
@@ -149,9 +187,16 @@ async def analyze(
     # Decode and analyze
     try:
         if fast:
-            # Non-default fast path: reduces compute while generally preserving rep counting
+            # Fast mode with motion-adaptive sampling to retain more key frames
             frames_iter = _iter_frames_from_video_bytes(
-                body, target_fps=12.0, target_width=480, model_complexity=1
+                body,
+                target_fps=12.0,
+                target_width=640,   # keep a bit more resolution for robustness
+                model_complexity=1,
+                adaptive_motion=True,
+                motion_resize_width=256,
+                motion_threshold=2.0,
+                max_consecutive_skips=3,
             )
         else:
             frames_iter = _iter_frames_from_video_bytes(body)
