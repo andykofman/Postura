@@ -1,7 +1,7 @@
 # Environment
 
-- Python 3.10 (Colab default).
-- OS: Debian-based (Colab). Windows/macOS dev OK; WSL2 recommended for parity.
+- Python 3.11 (Docker image). Colab flows may use 3.10.
+- OS: Debian-based. Windows dev via Docker Desktop + WSL2 recommended for parity.
 - CPU only for current BlazePose usage; GPU optional.
 
 Runtime behavior:
@@ -16,6 +16,6 @@ Colab runtime requirements:
 - Remove preinstalled Colab packages that can force `protobuf>=5`:
   - `pip uninstall -y ydf grpcio-status`
 
-Docker (future):
+Docker:
 
-- See `DOCKER_READINESS.md` for base images and OS libs.
+- See `DOCKER_READINESS.md` for the finalized Dockerfile, OS libs, and run instructions.

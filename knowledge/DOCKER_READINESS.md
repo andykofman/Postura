@@ -1,91 +1,54 @@
+# Dockerization (CPU)
 
-# Docker Readiness (No Dockerfile Yet)
+This project now includes a production-ready, CPU-only Docker image for the FastAPI service.
 
-This defines the future full-project Dockerization strategy. Do not add a Dockerfile yet.
+## Image design
 
-Assumptions:
+- Base: `python:3.11-slim`
+- System packages: `ffmpeg`, `libsm6`, `libxext6` (OpenCV runtime)
+- Python deps: installed via `requirements.txt` with strict `constraints.txt`
+- Server: `uvicorn api.main:app --host 0.0.0.0 --port 5000`
+- Port: `5000`
+- Build context kept small via `.dockerignore` (excludes notebooks, media, tests, caches)
 
-- Python 3.10 baseline.
-- CPU image first; optional GPU variant.
+Minimal `Dockerfile` (already in repo root):
 
-## Base Image Candidates
+```dockerfile
+FROM python:3.11-slim
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1
+WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg libsm6 libxext6 && rm -rf /var/lib/apt/lists/*
+COPY requirements.txt constraints.txt ./
+RUN pip install --no-cache-dir -r requirements.txt -c constraints.txt
+COPY . .
+EXPOSE 5000
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "5000"]
+```
 
-- CPU: `python:3.10-slim`
-- GPU (optional): `nvidia/cuda:12.2.0-cudnn8-runtime-ubuntu22.04` (requires NVIDIA Container Toolkit)
+## Build and run
 
-## Minimal OS Packages (Debian/Ubuntu)
+```bash
+docker build -t postura:cpu .
+docker images postura
+docker run --rm -p 5000:5000 postura:cpu
+```
 
-- libgl1
-- libglib2.0-0
-- ffmpeg
-- ca-certificates
-- curl
-- git (if cloning during build)
-- build-essential (optional; only if native builds are needed)
+Verify: open `http://localhost:5000/ui`.
 
-## Environment Variables
+## Image size and optimization
 
-- PYTHONDONTWRITEBYTECODE=1
-- PYTHONUNBUFFERED=1
-- PIP_NO_CACHE_DIR=1
-- POSTURA_ENV=docker
+- Slim base + no pip cache + `.dockerignore` → small CPU image.
+- Multi-stage does not meaningfully reduce size (no native builds). To shrink further:
+  - Remove heavy libs not used by the API (e.g., `matplotlib`).
+  - Keep large artifacts out of context (already done).
 
-## Python Dependency Strategy
+Check size:
 
-- Copy `requirements.txt` and `constraints.txt` first, then `pip install` to leverage layer cache.
-- `pip install --upgrade pip && pip install -r requirements.txt -c constraints.txt`
-- Consider BuildKit pip cache: `--mount=type=cache,target=/root/.cache/pip`
-
-## Entrypoint Design
-
-- `scripts/entrypoint.sh` (future):
-  - MODE=api → start API service (future)
-  - MODE=batch → run batch (e.g., `python -m pose.backend` or a CLI)
-- Default CMD: MODE=batch
-- Proper exit codes and graceful shutdown.
-
-## Healthcheck Concept
-
-- API mode: HTTP `/healthz` every 30s; fail on non-2xx.
-- Batch mode: healthcheck disabled or “process alive” check.
-
-## GPU Handling (optional)
-
-- Host: NVIDIA drivers + NVIDIA Container Toolkit.
-- Run: `docker run --gpus all ...`
-- If we add GPU MediaPipe later, pin versions compatible with the CUDA base.
-
-## Models and Data
-
-- MediaPipe BlazePose models are included in the pip package.
-- Keep image small; fetch data at start or mount volumes.
-
-## Ports and Runtime Args
-
-- API mode: expose 8000 (future).
-- Batch mode: no ports.
-- Batch CLI should support `--input` and `--output`.
-
-## Layer Caching Strategy
-
-1) FROM base
-2) Install OS packages
-3) Copy pins
-4) pip install
-5) Copy source
-6) Set entrypoint/CMD
-
-## Repro Steps (CPU First)
-
-- `docker build -t postura:cpu .`
-- `docker run --rm postura:cpu MODE=batch`
-- GPU later: add `--gpus all`.
-
-## Acceptance Criteria for the Future Dockerfile
-
-- Deterministic builds with pinned deps.
-- Minimal OS libs only.
-- Non-root runtime where feasible.
-- API healthcheck available.
-- Reproducible outputs across machines and CI.
-- Works offline after build (no network at runtime).
+```bash
+docker images postura
+docker image inspect postura:cpu --format '{{.Size}}'
+```
