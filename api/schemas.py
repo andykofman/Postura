@@ -35,3 +35,14 @@ class AnalyzeResponse(BaseModel):
     frame_data: List[FrameRecord]
 
 
+class JobSubmitResponse(BaseModel):
+    video_id: str
+    status: str = Field(description="queued | processing | done | error")
+
+
+class JobStatusResponse(BaseModel):
+    video_id: str
+    status: str
+    detail: Optional[str] = None
+
+

@@ -51,23 +51,50 @@
         link.textContent = '';
         try {
           const fast = document.getElementById('fast').checked ? '?fast=1' : '';
-          const resp = await fetch(`/analyze${fast}`, { method: 'POST', body: form });
-          const text = await resp.text();
-          let data;
-          try { data = JSON.parse(text); } catch (e) { out.textContent = text; return; }
-          out.textContent = JSON.stringify(data, null, 2);
-          if (!resp.ok) return;
-          if (data && data.video_id) {
-            const href = `/reports/${data.video_id}/summary.json`;
-            link.innerHTML = `<a href="${href}" target="_blank">Open saved summary.json</a>`;
+          const submit = await fetch(`/analyze${fast}`, { method: 'POST', body: form });
+          const submitText = await submit.text();
+          let job;
+          try { job = JSON.parse(submitText); } catch { out.textContent = submitText; return; }
+          out.textContent = JSON.stringify(job, null, 2);
+          if (!submit.ok) return;
+
+          // Poll job status until done
+          const vid = job.video_id;
+          async function poll() {
             try {
-              const s = await fetch(href);
-              if (s.ok) {
-                const js = await s.json();
-                saved.textContent = JSON.stringify(js, null, 2);
+              const s = await fetch(`/status/${vid}`);
+              const info = await s.json();
+              out.textContent = JSON.stringify(info, null, 2);
+              if (info.status === 'done') {
+                const r = await fetch(`/result/${vid}`);
+                if (r.ok) {
+                  const res = await r.json();
+                  out.textContent = JSON.stringify(res, null, 2);
+                  if (res && res.video_id) {
+                    const href = `/reports/${res.video_id}/summary.json`;
+                    link.innerHTML = `<a href="${href}" target="_blank">Open saved summary.json</a>`;
+                    try {
+                      const s2 = await fetch(href);
+                      if (s2.ok) {
+                        const js = await s2.json();
+                        saved.textContent = JSON.stringify(js, null, 2);
+                      }
+                    } catch {}
+                  }
+                } else {
+                  out.textContent = await r.text();
+                }
+              } else if (info.status === 'error') {
+                // Show error
+                saved.textContent = '';
+              } else {
+                setTimeout(poll, 1000);
               }
-            } catch {}
+            } catch (e) {
+              out.textContent = String(e);
+            }
           }
+          poll();
         } catch (err) {
           out.textContent = String(err);
         }
