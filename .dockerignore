@@ -1,0 +1,40 @@
+# VCS
+.git
+
+# Python caches
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.egg-info
+.venv
+venv
+.env
+.pytest_cache
+.mypy_cache
+.cache
+
+# Editors/OS
+*.swp
+.DS_Store
+.vscode
+.idea
+
+# Not needed in image
+/tests
+/report
+/demo
+
+# Large/unused
+*.ipynb
+*.ipynb_checkpoints
+*.pdf
+*.mp4
+*.png
+*.jpg
+*.json
+
+# Web/node
+node_modules
+.build
+.dist
