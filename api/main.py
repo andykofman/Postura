@@ -177,17 +177,12 @@ def _iter_frames_from_video_bytes(
     prod_thread = threading.Thread(target=producer, name="decoder-producer", daemon=True)
     prod_thread.start()
 
-    # Build backend with fallback when mediapipe is unavailable (e.g., unit tests)
+    # Build backend; if mediapipe is unavailable, surface an explicit error
     backend: Optional[PoseBackend]
     try:
         backend = PoseBackend(model_complexity=model_complexity)
-    except ImportError:
-        class _NoModel:
-            def process(self, frame_rgb):
-                class _R:
-                    pose_landmarks = None
-                return _R()
-        backend = PoseBackend(pose_model=_NoModel())
+    except ImportError as exc:
+        raise RuntimeError("mediapipe is not available in the API runtime") from exc
 
     try:
         with backend as b:

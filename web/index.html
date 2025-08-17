@@ -201,6 +201,8 @@
                 }
               } else if (info.status === 'error') {
                 setPill('error');
+                bar.style.width = '0%';
+                etaEl.textContent = '';
               } else {
                 setTimeout(poll, 900);
               }
