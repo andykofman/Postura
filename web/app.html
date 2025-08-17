@@ -21,10 +21,22 @@
       .stats{ display:grid; grid-template-columns: repeat(3,1fr); gap:12px; margin-top:8px } .stat{ background:rgba(255,255,255,.03); border:1px solid var(--border); border-radius:12px; padding:12px; text-align:center } .stat .num{ font-size:26px; font-weight:800 }
       .chips{ display:flex; gap:6px; flex-wrap:wrap; margin-top:6px } .chip{ padding:4px 8px; border-radius:999px; background:rgba(168,85,247,.18); border:1px solid var(--border); font-size:12px }
       .thumbs{ display:grid; grid-template-columns: repeat(auto-fill,minmax(220px,1fr)); gap:10px; margin-top:10px }
-      .thumb{ border:1px solid var(--border); border-radius:10px; overflow:hidden; background:rgba(255,255,255,.02) }
-      .thumb img{ width:100%; display:block }
-      .thumb figcaption{ padding:6px 8px; font-size:12px; color:var(--muted) }
+      .thumb{ border:1px solid var(--border); border-radius:10px; overflow:hidden; background:rgba(255,255,255,.02) } .thumb img{ width:100%; display:block } .thumb figcaption{ padding:6px 8px; font-size:12px; color:var(--muted) }
       .sparkline{ width:100%; height:60px; margin-top:8px }
+      /* Cool drag/drop: animated border at idle; toned down glow on hover */
+      .dropzone{
+        position:relative; border:2px solid transparent; border-radius:12px; padding:30px 24px; text-align:center; cursor:pointer;
+        transition: transform .2s ease, box-shadow .2s ease, background-color .2s ease;
+        background: linear-gradient(var(--card), var(--card)) padding-box,
+                   linear-gradient(135deg, var(--accent), var(--accent-2), var(--light), var(--accent)) border-box;
+        background-origin: border-box; background-clip: padding-box, border-box;
+        background-size: 100% 100%, 300% 300%;
+        background-position: 0 0, 0% 50%;
+        animation: edgeAnim 12s linear infinite;
+      }
+      @keyframes edgeAnim { 0%{ background-position: 0 0, 0% 50%; } 100%{ background-position: 0 0, 300% 50%; } }
+      .dropzone:hover{ transform: translateY(-1px); box-shadow: 0 6px 16px rgba(168,85,247,.15); animation-play-state: paused; }
+      .dropzone.dragover{ transform: translateY(-2px) scale(1.01); box-shadow: 0 10px 24px rgba(168,85,247,.22); }
     </style>
   </head>
   <body>
@@ -84,7 +96,7 @@
       (function anim(){ if(visual<target){ const d=Math.max(0.003,(target-visual)*0.12); visual=Math.min(target,visual+d); bar.style.width=`${Math.round(visual*100)}%`; } requestAnimationFrame(anim);})();
       function setPill(s){ pill.className='pill'; pill.textContent=s.charAt(0).toUpperCase()+s.slice(1); pill.classList.add(s); }
       function fmtTimes(){ times.textContent = `Uploading: ${Math.round(upTs)}s • Fetching: ${Math.round(fetchTs)}s • Processing: ${Math.round(procTs)}s`; }
-      drop.addEventListener('click', ()=>file.click()); drop.addEventListener('dragover',e=>{ e.preventDefault(); drop.style.borderColor='var(--accent)';}); drop.addEventListener('dragleave',()=>{ drop.style.borderColor='rgba(168,85,247,0.5)';}); drop.addEventListener('drop', e=>{ e.preventDefault(); if(e.dataTransfer.files&&e.dataTransfer.files[0]){ file.files=e.dataTransfer.files; onChange(); }}); file.addEventListener('change', onChange);
+      drop.addEventListener('click', ()=>file.click()); drop.addEventListener('dragover',e=>{ e.preventDefault(); drop.classList.add('dragover');}); drop.addEventListener('dragleave',()=>{ drop.classList.remove('dragover');}); drop.addEventListener('drop', e=>{ e.preventDefault(); drop.classList.remove('dragover'); if(e.dataTransfer.files&&e.dataTransfer.files[0]){ file.files=e.dataTransfer.files; onChange(); }}); file.addEventListener('change', onChange);
       function onChange(){ if(file.files.length){ const f=file.files[0]; nameEl.textContent=`${f.name} · ${(f.size/1024/1024).toFixed(2)} MB`; lastFiles=file.files; } }
       btn.addEventListener('click', start); retry.addEventListener('click', ()=>{ if(lastFiles){ file.files=lastFiles; start(); }}); cancel.addEventListener('click', ()=>{ polling=false; setPill('error'); });
       function reset(){ visual=0; target=0; startTs=0; upTs=0; fetchTs=0; procTs=0; out.textContent='{ "state": "waiting" }'; logs.value=''; link.textContent=''; chips.innerHTML=''; spark.innerHTML=''; thumbs.innerHTML='<div class="thumb"><figcaption style="padding:6px 8px">Awaiting thumbnails…</figcaption></div>'; eta.textContent=''; retry.style.display='none'; cancel.style.display='inline-block'; }

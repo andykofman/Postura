@@ -321,3 +321,116 @@ def _generate_thumbnails(*, video_path: Path, result: dict, out_dir: Path) -> No
     (video_path.parent / "thumbnails.json").write_text(json.dumps(thumbs, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+@app.get("/report/{video_id}.pdf")
+async def pdf_report(video_id: str):
+    """Generate a PDF report with summary, charts, and a few annotated frames."""
+    import io, json, math
+    from reportlab.lib.pagesizes import A4
+    from reportlab.pdfgen import canvas
+    from reportlab.lib.units import cm
+    from reportlab.lib.utils import ImageReader
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+
+    summ_path = REPORT_ROOT / video_id / "summary.json"
+    if not summ_path.exists():
+        raise HTTPException(status_code=404, detail="summary.json missing")
+    data = json.loads(summ_path.read_text(encoding="utf-8"))
+
+    # Prepare PDF buffer
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=A4)
+    width, height = A4
+
+    # Title
+    c.setFont("Helvetica-Bold", 18)
+    c.drawString(2*cm, height-2*cm, f"Postura Report – {video_id}")
+    c.setFont("Helvetica", 11)
+    c.drawString(2*cm, height-2.7*cm, "Automated form analysis and rep summary")
+
+    # Summary
+    s = data.get("summary", {})
+    sq = s.get("squats", {})
+    pu = s.get("pushups", {})
+    y = height-4*cm
+    c.setFont("Helvetica-Bold", 14)
+    c.drawString(2*cm, y, "Summary")
+    y -= 0.6*cm
+    c.setFont("Helvetica", 11)
+    c.drawString(2*cm, y, f"Squats – total: {sq.get('total_reps',0)}, good-form: {sq.get('good_form_reps',0)}")
+    y -= 0.5*cm
+    c.drawString(2*cm, y, f"Pushups – total: {pu.get('total_reps',0)}, good-form: {pu.get('good_form_reps',0)}")
+
+    # Bar chart good vs bad
+    fig, ax = plt.subplots(figsize=(4,2))
+    labels = ['Squats','Pushups']
+    good = [sq.get('good_form_reps',0), pu.get('good_form_reps',0)]
+    total = [sq.get('total_reps',0), pu.get('total_reps',0)]
+    bad = [max(0, total[0]-good[0]), max(0, total[1]-good[1])]
+    x = [0,1]
+    ax.bar(x, good, color="#22c55e", label="Good")
+    ax.bar(x, bad, bottom=good, color="#ef4444", label="Bad")
+    ax.set_xticks(x, labels)
+    ax.set_ylim(0, max(1, max(total)))
+    ax.legend(loc='upper right')
+    ax.set_title('Good vs Bad reps')
+    chart_buf = io.BytesIO()
+    plt.tight_layout()
+    fig.savefig(chart_buf, format='png', dpi=150)
+    plt.close(fig)
+    chart_buf.seek(0)
+    c.drawImage(ImageReader(chart_buf), 2*cm, y-6*cm, width=8*cm, height=5*cm)
+
+    # Angle vs frame plot (use knee if available else elbow)
+    frames = data.get('frame_data', [])
+    if frames:
+        xs = [f.get('frame_index',0) for f in frames]
+        ys = [(f.get('angles') or {}).get('knee') or (f.get('angles') or {}).get('elbow') or 0 for f in frames]
+        fig2, ax2 = plt.subplots(figsize=(4,2))
+        ax2.plot(xs, ys, color="#A855F7")
+        ax2.set_title('Angle vs Frame')
+        ax2.set_xlabel('Frame')
+        ax2.set_ylabel('Angle (deg)')
+        b2 = io.BytesIO()
+        plt.tight_layout()
+        fig2.savefig(b2, format='png', dpi=150)
+        plt.close(fig2)
+        b2.seek(0)
+        c.drawImage(ImageReader(b2), 12*cm, y-6*cm, width=8*cm, height=5*cm)
+
+    c.showPage()
+
+    # Thumbnails page
+    tjson = REPORT_ROOT / video_id / "thumbnails.json"
+    thumbs = []
+    if tjson.exists():
+        try:
+            thumbs = json.loads(tjson.read_text(encoding="utf-8"))
+        except Exception:
+            thumbs = []
+    if thumbs:
+        c.setFont("Helvetica-Bold", 14)
+        c.drawString(2*cm, height-2*cm, "Annotated Snapshots")
+        x, y = 2*cm, height-3.5*cm
+        w, h = 7*cm, 4*cm
+        per_row = 2
+        count = 0
+        for t in thumbs[:6]:
+            img_path = REPORT_ROOT / video_id / "thumbs" / Path(t.get('path','')).name
+            if img_path.exists():
+                c.drawImage(str(img_path), x, y, width=w, height=h, preserveAspectRatio=True, mask='auto')
+                c.setFont("Helvetica", 10)
+                c.drawString(x, y-0.3*cm, f"Rep {t.get('rep_id')} • {t.get('exercise')} • angle {(t.get('angles') or {}).get('knee') or (t.get('angles') or {}).get('elbow')}")
+                count += 1
+                if count % per_row == 0:
+                    x = 2*cm; y -= h + 1.2*cm
+                else:
+                    x += w + 1.0*cm
+        c.showPage()
+
+    c.save()
+    buf.seek(0)
+    return Response(content=buf.getvalue(), media_type='application/pdf')
+
+
