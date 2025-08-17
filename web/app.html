@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Postura • Analyzer</title>
+    <style>
+      :root {
+        --muted: #9CA3AF;
+        --accent: #A855F7;
+        --accent-2: #C1A6FF;
+        --light: #E5E7EB;
+        --bg: #0B0F14;
+        --card: #0F141B;
+        --border: rgba(156,163,175,0.18);
+        --success: #22c55e;
+        --danger: #ef4444;
+        --warning: #f59e0b;
+        --shadow: 0 10px 30px rgba(168, 85, 247, 0.15), 0 6px 16px rgba(193, 166, 255, 0.08);
+      }
+      * { box-sizing: border-box; }
+      html, body { height: 100%; }
+      body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; color: var(--light); background: var(--bg); }
+      .container { max-width: 1100px; margin: 0 auto; padding: 28px 24px; }
+      header { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+      .logo { width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(135deg, var(--accent), var(--accent-2)); box-shadow: var(--shadow); }
+      h1 { font-size: 22px; margin: 0; letter-spacing: .2px; }
+      .subtitle { color: var(--muted); font-size: 13px; }
+      .grid { display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 18px; }
+      .card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 18px; box-shadow: var(--shadow); }
+      .card h2 { margin: 0 0 10px 0; font-size: 18px; }
+      .dropzone { border: 2px dashed rgba(168,85,247,0.5); border-radius: 12px; padding: 24px; text-align: center; cursor: pointer; transition: border-color .2s ease, background-color .2s ease; background: rgba(255,255,255,0.02); }
+      .dropzone:hover { border-color: var(--accent); background: rgba(168,85,247,0.05); }
+      .controls { display: flex; align-items: center; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+      .btn { appearance: none; border: 0; border-radius: 10px; padding: 10px 16px; font-weight: 600; color: #0b0f14; background: linear-gradient(135deg, var(--accent), var(--accent-2)); cursor: pointer; box-shadow: var(--shadow); }
+      .btn:disabled { opacity: .5; cursor: not-allowed; }
+      .hint { color: var(--muted); font-size: 12px; }
+      .status-row { display: flex; align-items: center; gap: 10px; margin: 8px 0 12px; }
+      .pill { font-size: 12px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border); color: var(--light); transition: background .2s ease, color .2s ease; }
+      .pill.uploading { background: rgba(229,231,235,0.08); color: var(--light); border-color: var(--light); }
+      .pill.fetching { background: rgba(168,85,247,0.12); border-color: var(--accent-2); }
+      .pill.processing { border-color: var(--accent-2); background: rgba(193,166,255,0.12); }
+      .pill.done { border-color: var(--success); color: #10b981; background: rgba(16,185,129,0.12); }
+      .pill.error { border-color: var(--danger); color: #ef4444; background: rgba(239,68,68,0.12); }
+      .progress-wrap { width: 100%; height: 12px; background: rgba(255,255,255,0.06); border-radius: 999px; overflow: hidden; border: 1px solid var(--border); }
+      .progress-bar { height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width .15s linear; }
+      .eta { font-size: 12px; color: var(--muted); margin-left: 6px; }
+      .summary { font-size: 14px; line-height: 1.5; }
+      .summary h3 { margin: 8px 0 4px; font-size: 16px; }
+      .summary ul { margin: 6px 0 10px 18px; }
+      details { border: 1px dashed var(--border); border-radius: 8px; padding: 8px; margin-top: 8px; }
+      pre { background: rgba(0,0,0,0.35); color: var(--light); padding: 12px; border-radius: 10px; overflow: auto; border: 1px solid var(--border); }
+      a { color: var(--light); text-decoration: none; border-bottom: 1px dotted var(--accent-2); }
+      a:hover { color: var(--accent-2); }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <div class="logo"></div>
+        <div>
+          <h1>Postura • Analyzer</h1>
+          <div class="subtitle">Upload an MP4 (≤ 50MB). Processing runs in the background; your summary is saved under <code>/reports/{video_id}/summary.json</code>.</div>
+        </div>
+      </header>
+      <div class="grid">
+        <div class="card">
+          <h2>1) Upload</h2>
+          <div id="drop" class="dropzone">
+            <strong>Drag & drop</strong> your video here, or click to choose
+            <div class="hint">Accepted type: video/mp4</div>
+            <input id="file" type="file" accept="video/mp4" hidden />
+          </div>
+          <div class="controls">
+            <button id="btn" class="btn" disabled>Analyze</button>
+            <span id="fileName" class="hint">No file selected</span>
+          </div>
+          <div class="hint">Tip: Keep this tab open. You'll see progress and results below.</div>
+        </div>
+
+        <div class="card">
+          <h2>2) Status</h2>
+          <div class="status-row">
+            <span id="statusPill" class="pill">Idle</span>
+            <span id="eta" class="eta"></span>
+          </div>
+          <div class="progress-wrap"><div id="bar" class="progress-bar"></div></div>
+          <div id="reportLink" class="row"></div>
+        </div>
+      </div>
+
+      <div class="grid" style="margin-top:18px">
+        <div class="card">
+          <h2>Response</h2>
+          <div id="summary" class="summary">Upload a video to see your personalized summary.</div>
+          <details>
+            <summary>Raw JSON (debug)</summary>
+            <pre id="out">{ "state": "waiting" }</pre>
+          </details>
+        </div>
+        <div class="card">
+          <h2>Saved Summary</h2>
+          <pre id="saved">// Will appear when ready</pre>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const fileInput = document.getElementById('file');
+      const dropzone = document.getElementById('drop');
+      const analyzeBtn = document.getElementById('btn');
+      const fileName = document.getElementById('fileName');
+      const out = document.getElementById('out');
+      const saved = document.getElementById('saved');
+      const link = document.getElementById('reportLink');
+      const bar = document.getElementById('bar');
+      const pill = document.getElementById('statusPill');
+      const etaEl = document.getElementById('eta');
+      const summaryEl = document.getElementById('summary');
+
+      let visualProgress = 0; let targetProgress = 0; function animateBar(){ if(visualProgress < targetProgress){ const d=Math.max(0.003,(targetProgress-visualProgress)*0.15); visualProgress=Math.min(targetProgress,visualProgress+d); bar.style.width=`${Math.round(visualProgress*100)}%`; } requestAnimationFrame(animateBar);} requestAnimationFrame(animateBar);
+      function setPill(stage){ pill.className='pill'; if(stage==='uploading')pill.classList.add('uploading'); if(stage==='fetching')pill.classList.add('fetching'); if(stage==='processing')pill.classList.add('processing'); if(stage==='done')pill.classList.add('done'); if(stage==='error')pill.classList.add('error'); pill.textContent=stage.charAt(0).toUpperCase()+stage.slice(1); }
+      function humanize(res){ if(!res||!res.summary)return 'No data available.'; const s=res.summary; const sq=s.squats||{total_reps:0,good_form_reps:0,common_issues:[]}; const pu=s.pushups||{total_reps:0,good_form_reps:0,common_issues:[]}; const parts=[]; parts.push(`<h3>Video <code>${res.video_id||''}</code></h3>`); parts.push(`<p>We analyzed your video and detected <strong>${sq.total_reps}</strong> squats and <strong>${pu.total_reps}</strong> pushups.</p>`); parts.push(`<p>Good-form reps: <strong>${sq.good_form_reps}</strong> squats, <strong>${pu.good_form_reps}</strong> pushups.</p>`); const issues=[]; if(Array.isArray(sq.common_issues)&&sq.common_issues.length){ issues.push(`<li>Squats: ${sq.common_issues.map(x=>`<code>${x}</code>`).join(', ')}</li>`);} if(Array.isArray(pu.common_issues)&&pu.common_issues.length){ issues.push(`<li>Pushups: ${pu.common_issues.map(x=>`<code>${x}</code>`).join(', ')}</li>`);} if(issues.length){ parts.push('<h3>Common Issues</h3>'); parts.push(`<ul>${issues.join('')}</ul>`);} else { parts.push('<p>No common issues flagged. Nice work!</p>'); } return parts.join('\n'); }
+      function pickFile(){ fileInput.click(); }
+      dropzone.addEventListener('click', pickFile);
+      dropzone.addEventListener('dragover', e=>{e.preventDefault(); dropzone.style.borderColor='var(--accent)';});
+      dropzone.addEventListener('dragleave', ()=>{dropzone.style.borderColor='rgba(168,85,247,0.5)';});
+      dropzone.addEventListener('drop', e=>{ e.preventDefault(); if(e.dataTransfer.files&&e.dataTransfer.files[0]){ fileInput.files=e.dataTransfer.files; onFileChange(); } });
+      fileInput.addEventListener('change', onFileChange);
+      function onFileChange(){ if(fileInput.files.length){ const f=fileInput.files[0]; fileName.textContent=`${f.name} · ${(f.size/1024/1024).toFixed(2)} MB`; analyzeBtn.disabled=false; } else { fileName.textContent='No file selected'; analyzeBtn.disabled=true; } }
+      analyzeBtn.addEventListener('click', analyze);
+      async function analyze(){ if(!fileInput.files.length){ alert('Select an MP4 file'); return; } const f=fileInput.files[0]; const form=new FormData(); form.append('file', f, f.name); out.textContent='Uploading...'; saved.textContent=''; link.textContent=''; setPill('uploading'); targetProgress=0.05; etaEl.textContent=''; const start=Date.now(); try{ const xhr=new XMLHttpRequest(); xhr.open('POST','/analyze',true); xhr.responseType='text'; xhr.upload.onprogress=(e)=>{ if(e.lengthComputable){ const pct=Math.max(0.05, Math.min(0.8, e.loaded/e.total*0.8)); targetProgress=pct; } }; xhr.onload=async()=>{ let job; try{ job=JSON.parse(xhr.responseText||'{}'); }catch{ out.textContent=xhr.responseText||'Parse error'; setPill('error'); return; } out.textContent=JSON.stringify(job,null,2); if(xhr.status===202&&job.video_id){ setPill('fetching'); targetProgress=Math.max(targetProgress,0.3); const vid=job.video_id; const poll=async()=>{ try{ const s=await fetch(`/status/${vid}`); const info=await s.json(); out.textContent=JSON.stringify(info,null,2); if(info.status==='processing') setPill('processing'); if(typeof info.progress==='number'){ const mapped=0.3 + info.progress*0.68; targetProgress=Math.max(targetProgress, Math.min(0.98, mapped)); const elapsed=(Date.now()-start)/1000; if(info.progress>0){ const remaining=elapsed*(1-info.progress)/info.progress; etaEl.textContent=`ETA ${Math.max(1, Math.round(remaining))}s`; } } if(info.status==='done'){ setPill('fetching'); targetProgress=0.99; const r=await fetch(`/result/${vid}`); if(r.ok){ const res=await r.json(); out.textContent=JSON.stringify(res,null,2); summaryEl.innerHTML=humanize(res); targetProgress=1.0; setPill('done'); etaEl.textContent=''; if(res&&res.video_id){ const href=`/reports/${res.video_id}/summary.json`; link.innerHTML=`<a href="${href}" target="_blank">Open saved summary.json</a>`; try{ const s2=await fetch(href); if(s2.ok){ const js=await s2.json(); saved.textContent=JSON.stringify(js,null,2);} }catch{} } } else { out.textContent=await r.text(); setPill('error'); } } else if(info.status==='error'){ setPill('error'); targetProgress=0; etaEl.textContent=''; } else { setTimeout(poll, 900); } } catch(e){ out.textContent=String(e); setPill('error'); } }; poll(); } else if(xhr.status===200&&job.summary){ summaryEl.innerHTML=humanize(job); targetProgress=1.0; setPill('done'); etaEl.textContent=''; if(job.video_id){ const href=`/reports/${job.video_id}/summary.json`; link.innerHTML=`<a href="${href}" target="_blank">Open saved summary.json</a>`; try{ const s2=await fetch(href); if(s2.ok){ const js=await s2.json(); saved.textContent=JSON.stringify(js,null,2);} }catch{} } } else if(xhr.status>=400){ setPill('error'); try{ const j=JSON.parse(xhr.responseText||'{}'); out.textContent=JSON.stringify(j,null,2);}catch{ out.textContent=xhr.responseText||'Error'; } } }; xhr.onerror=()=>{ setPill('error'); out.textContent='Network error'; }; xhr.send(form); } catch(err){ out.textContent=String(err); setPill('error'); } }
+    </script>
+  </body>
+</html>
