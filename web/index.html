@@ -20,7 +20,8 @@
       <div class="row">
         <input id="file" type="file" accept="video/mp4" />
         <button id="btn">Analyze</button>
-        <span class="muted">Max 50MB MP4</span>
+        <label style="margin-left:12px"><input id="fast" type="checkbox" /> Fast mode</label>
+        <span class="muted" style="margin-left:12px">Max 50MB MP4</span>
       </div>
       <div class="row" id="reportLink"></div>
       <div class="grid">
@@ -49,7 +50,8 @@
         saved.textContent = '';
         link.textContent = '';
         try {
-          const resp = await fetch('/analyze', { method: 'POST', body: form });
+          const fast = document.getElementById('fast').checked ? '?fast=1' : '';
+          const resp = await fetch(`/analyze${fast}`, { method: 'POST', body: form });
           const text = await resp.text();
           let data;
           try { data = JSON.parse(text); } catch (e) { out.textContent = text; return; }

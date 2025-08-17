@@ -26,7 +26,7 @@ PUSHUP_ELBOW_ANGLE = HysteresisThresholds(
 
 # Analysis tolerances (normalized coordinate space)
 # Moderate alignment tolerance for per-rep form checks and summary issue flags
-SQUAT_ALIGNMENT_TOL = 0.08
+SQUAT_ALIGNMENT_TOL = 0.12
 PUSHUP_ALIGNMENT_TOL = 0.08
 
 # Degree thresholds for form evaluation (kept reasonably strict)

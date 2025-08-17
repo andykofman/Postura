@@ -127,7 +127,7 @@ def analyze_video(frames_iter: Iterable[Sequence[Optional[Keypoint]]]) -> Dict[s
     prev_squat_in_bottom = False
     prev_push_in_bottom = False
     squat_min_knee_deg_current = float("inf")
-    squat_max_align_abs_current = 0.0
+    squat_align_abs_history: List[float] = []
     push_min_elbow_deg_current = float("inf")
     push_max_align_abs_current = 0.0
 
@@ -206,7 +206,7 @@ def analyze_video(frames_iter: Iterable[Sequence[Optional[Keypoint]]]) -> Dict[s
             if np.isfinite(knee_degree_cur):
                 squat_min_knee_deg_current = min(squat_min_knee_deg_current, knee_degree_cur)
             if np.isfinite(align_abs_cur):
-                squat_max_align_abs_current = max(squat_max_align_abs_current, align_abs_cur)
+                squat_align_abs_history.append(float(align_abs_cur))
         else:
             # If we just exited bottom (prev True -> cur False), we keep accumulators for evaluation below
             pass
@@ -224,7 +224,11 @@ def analyze_video(frames_iter: Iterable[Sequence[Optional[Keypoint]]]) -> Dict[s
             squat_rep_id += 1
             # Evaluate form using the minimum knee angle observed during the bottom phase
             knee_degree = squat_min_knee_deg_current
-            align_max_abs = squat_max_align_abs_current
+            if squat_align_abs_history:
+                # Use robust 90th percentile to reduce spikes causing false negatives
+                align_max_abs = float(np.percentile(np.array(squat_align_abs_history, dtype=float), 90))
+            else:
+                align_max_abs = float("nan")
             is_ok = (
                 np.isfinite(knee_degree)
                 and knee_degree <= float(SQUAT_KNEE_MAX_DEG)
@@ -244,7 +248,7 @@ def analyze_video(frames_iter: Iterable[Sequence[Optional[Keypoint]]]) -> Dict[s
             )
             # Reset accumulators for next squat rep
             squat_min_knee_deg_current = float("inf")
-            squat_max_align_abs_current = 0.0
+            squat_align_abs_history = []
 
         if ev_push.get("rep_event") == "rep_complete":
             push_rep_id += 1
