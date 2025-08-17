@@ -4,6 +4,12 @@
 - OS: Debian-based (Colab). Windows/macOS dev OK; WSL2 recommended for parity.
 - CPU only for current BlazePose usage; GPU optional.
 
+Runtime behavior:
+
+- API saves artifacts under `report/{video_id}/` and serves them via `/reports`.
+- PDF is generated on demand at `/report/{video_id}.pdf`.
+- Results landing page at `/ui/result.html?video_id={id}` provides one-click access to both.
+
 Colab runtime requirements:
 
 - `libgl1`, `libglib2.0-0`, `ffmpeg` via apt.

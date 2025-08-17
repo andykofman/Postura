@@ -8,6 +8,11 @@ Top-level Python packages:
 - mediapipe==0.10.14
 - opencv-python-headless==4.10.0.84
 - pytest==8.2.2
+- fastapi==0.115.0
+- uvicorn==0.30.5
+- python-multipart==0.0.9
+- matplotlib==3.9.0
+- reportlab==4.2.2
 
 Internal modules added:
 - `pose.smoothing` and `analysis.features` are pure-Python and introduce no new third-party deps.
@@ -24,6 +29,7 @@ System packages (Debian/Ubuntu):
 
 - libgl1, libglib2.0-0 — OpenCV runtime deps
 - ffmpeg — video codecs
+ - fonts-dejavu-core — nicer default fonts for ReportLab (optional)
 
 Colab-specific note:
 
