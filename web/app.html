@@ -17,26 +17,19 @@
       .pill.uploading{ background:rgba(229,231,235,.08); border-color:var(--light) } .pill.fetching{ background:rgba(168,85,247,.12); border-color:var(--accent-2) } .pill.processing{ border-color:var(--accent-2); background:rgba(193,166,255,.12) } .pill.done{ border-color:var(--success); color:#10b981; background:rgba(16,185,129,.12) } .pill.error{ border-color:var(--danger); color:#ef4444; background:rgba(239,68,68,.12) }
       .progress-wrap{ width:100%; height:12px; background:rgba(255,255,255,.06); border-radius:999px; overflow:hidden; border:1px solid var(--border) } .progress-bar{ height:100%; width:0%; background:linear-gradient(90deg,var(--accent),var(--accent-2)); transition:width .15s linear }
       .eta{ font-size:12px; color:var(--muted); margin-left:6px } .times{ font-size:12px; color:var(--muted); display:flex; gap:12px; flex-wrap:wrap }
-      details{ border:1px dashed var(--border); border-radius:8px; padding:8px; margin-top:8px } textarea{ width:100%; min-height:120px; resize:vertical; background:rgba(0,0,0,.35); color:var(--light); border:1px solid var(--border); border-radius:8px; padding:8px }
+      details{ border:1px dashed var(--border); border-radius:8px; padding:8px; margin-top:8px } details > summary { list-style:none; cursor:pointer; padding:6px 10px; border-radius:999px; display:inline-block; margin-bottom:6px; background:linear-gradient(135deg,var(--accent),var(--accent-2)); color:#0B0F14; font-weight:700; } details > summary::-webkit-details-marker{ display:none }
+      textarea{ width:100%; min-height:120px; resize:vertical; background:rgba(0,0,0,.35); color:var(--light); border:1px solid var(--border); border-radius:8px; padding:8px }
       .stats{ display:grid; grid-template-columns: repeat(3,1fr); gap:12px; margin-top:8px } .stat{ background:rgba(255,255,255,.03); border:1px solid var(--border); border-radius:12px; padding:12px; text-align:center } .stat .num{ font-size:26px; font-weight:800 }
       .chips{ display:flex; gap:6px; flex-wrap:wrap; margin-top:6px } .chip{ padding:4px 8px; border-radius:999px; background:rgba(168,85,247,.18); border:1px solid var(--border); font-size:12px }
       .thumbs{ display:grid; grid-template-columns: repeat(auto-fill,minmax(220px,1fr)); gap:10px; margin-top:10px }
       .thumb{ border:1px solid var(--border); border-radius:10px; overflow:hidden; background:rgba(255,255,255,.02) } .thumb img{ width:100%; display:block } .thumb figcaption{ padding:6px 8px; font-size:12px; color:var(--muted) }
       .sparkline{ width:100%; height:60px; margin-top:8px }
-      /* Cool drag/drop: animated border at idle; toned down glow on hover */
-      .dropzone{
-        position:relative; border:2px solid transparent; border-radius:12px; padding:30px 24px; text-align:center; cursor:pointer;
-        transition: transform .2s ease, box-shadow .2s ease, background-color .2s ease;
-        background: linear-gradient(var(--card), var(--card)) padding-box,
-                   linear-gradient(135deg, var(--accent), var(--accent-2), var(--light), var(--accent)) border-box;
-        background-origin: border-box; background-clip: padding-box, border-box;
-        background-size: 100% 100%, 300% 300%;
-        background-position: 0 0, 0% 50%;
-        animation: edgeAnim 12s linear infinite;
-      }
+      .dropzone{ position:relative; border:2px solid transparent; border-radius:12px; padding:30px 24px; text-align:center; cursor:pointer; transition: transform .2s ease, box-shadow .2s ease, background-color .2s ease; background: linear-gradient(var(--card), var(--card)) padding-box, linear-gradient(135deg, var(--accent), var(--accent-2), var(--light), var(--accent)) border-box; background-origin: border-box; background-clip: padding-box, border-box; background-size: 100% 100%, 300% 300%; background-position: 0 0, 0% 50%; animation: edgeAnim 12s linear infinite; }
       @keyframes edgeAnim { 0%{ background-position: 0 0, 0% 50%; } 100%{ background-position: 0 0, 300% 50%; } }
       .dropzone:hover{ transform: translateY(-1px); box-shadow: 0 6px 16px rgba(168,85,247,.15); animation-play-state: paused; }
       .dropzone.dragover{ transform: translateY(-2px) scale(1.01); box-shadow: 0 10px 24px rgba(168,85,247,.22); }
+      .links { display:flex; gap:10px; flex-wrap:wrap; margin-top:8px }
+      .link-green { display:inline-block; padding:6px 10px; border-radius:999px; background:linear-gradient(135deg,#16a34a,#22c55e); color:#0B0F14; font-weight:700; text-decoration:none }
     </style>
   </head>
   <body>
@@ -68,8 +61,8 @@
           <div class="status-row"><span id="statusPill" class="pill">Idle</span><span id="eta" class="eta"></span></div>
           <div class="progress-wrap"><div id="bar" class="progress-bar"></div></div>
           <div id="times" class="times">Uploading: 0s • Fetching: 0s • Processing: 0s</div>
-          <div id="reportLink" style="margin-top:6px"></div>
-          <details style="margin-top:8px"><summary>Live logs</summary><textarea id="logs" readonly></textarea></details>
+          <div id="reportLink" class="links" style="margin-top:6px"></div>
+          <details open style="margin-top:8px"><summary>Live logs</summary><textarea id="logs" readonly></textarea></details>
         </div>
       </div>
       <div class="grid" style="margin-top:14px">
@@ -82,7 +75,7 @@
           </div>
           <div id="chips" class="chips"></div>
           <svg id="spark" class="sparkline" viewBox="0 0 600 60"></svg>
-          <details style="margin-top:8px"><summary>Raw JSON</summary><pre id="out">{ "state": "waiting" }</pre></details>
+          <details open style="margin-top:8px"><summary>Raw JSON</summary><pre id="out">{ "state": "waiting" }</pre></details>
         </div>
         <div class="card">
           <h3>Annotated Snapshots</h3>
@@ -103,7 +96,7 @@
       async function start(){ if(!file.files.length){ alert('Select a file'); return; } reset(); const f=file.files[0]; const form=new FormData(); form.append('file', f, f.name); const xhr=new XMLHttpRequest(); xhr.open('POST','/analyze',true); xhr.responseType='json'; startTs=performance.now()/1000; setPill('uploading'); xhr.upload.onprogress=(e)=>{ if(e.lengthComputable){ target=Math.max(0.05, Math.min(0.7, e.loaded/e.total*0.7)); upTs=(performance.now()/1000)-startTs; fmtTimes(); }}; xhr.onload=()=>{ upTs=Math.max(upTs, (performance.now()/1000)-startTs); fmtTimes(); if(xhr.status!==202){ setPill('error'); out.textContent=JSON.stringify(xhr.response||{},null,2); return; } const resp=xhr.response; currentId=resp.video_id; setPill('fetching'); target=Math.max(target, 0.75); polling=true; poll(); streamLogs(); }; xhr.onerror=()=>{ setPill('error'); }; xhr.send(form); }
       async function poll(){ if(!currentId||!polling) return; try{ const r=await fetch(`/status/${currentId}`); const s=await r.json(); out.textContent=JSON.stringify(s,null,2); if(s.status==='processing'){ setPill('processing'); if(typeof s.progress==='number'){ target=Math.max(target, Math.min(0.95, 0.75 + 0.2*s.progress)); procTs = (performance.now()/1000) - startTs - upTs - fetchTs; fmtTimes(); if(s.eta_seconds){ eta.textContent = `ETA ${Math.round(s.eta_seconds)}s`; } } } if(s.status==='done'){ target=1.0; setPill('done'); eta.textContent=''; polling=false; cancel.style.display='none'; retry.style.display='inline-block'; const res=await (await fetch(`/result/${currentId}`)).json(); renderSummary(res); renderThumbs(res); return; } if(s.status==='error'){ polling=false; setPill('error'); cancel.style.display='none'; retry.style.display='inline-block'; return; } fetchTs = (performance.now()/1000) - startTs - upTs - procTs; fmtTimes(); setTimeout(poll, 900);}catch(e){ setTimeout(poll, 1200);} }
       async function streamLogs(){ if(!currentId) return; try{ const txt = await (await fetch(`/logs/${currentId}`)).text(); logs.value = txt; logs.scrollTop = logs.scrollHeight; }catch{} if(polling) setTimeout(streamLogs, 1000); }
-      function renderSummary(res){ const s=res.summary||{}; const sq=s.squats||{total_reps:0,good_form_reps:0,common_issues:[]}; const pu=s.pushups||{total_reps:0,good_form_reps:0,common_issues:[]}; squatsNum.textContent=String(sq.total_reps||0); pushupsNum.textContent=String(pu.total_reps||0); goodNum.textContent=String((sq.good_form_reps||0)+(pu.good_form_reps||0)); const allIssues=[...(sq.common_issues||[]), ...(pu.common_issues||[])]; chips.innerHTML = allIssues.map(x=>`<span class="chip">${x}</span>`).join(''); drawSpark(res); link.innerHTML = res.video_id ? `<a href="/reports/${res.video_id}/summary.json" target="_blank">Open saved summary.json</a>` : ''; }
+      function renderSummary(res){ const s=res.summary||{}; const sq=s.squats||{total_reps:0,good_form_reps:0,common_issues:[]}; const pu=s.pushups||{total_reps:0,good_form_reps:0,common_issues:[]}; squatsNum.textContent=String(sq.total_reps||0); pushupsNum.textContent=String(pu.total_reps||0); goodNum.textContent=String((sq.good_form_reps||0)+(pu.good_form_reps||0)); const allIssues=[...(sq.common_issues||[]), ...(pu.common_issues||[])]; chips.innerHTML = allIssues.map(x=>`<span class="chip">${x}</span>`).join(''); drawSpark(res); if(res.video_id){ link.innerHTML = `<a class="link-green" href="/reports/${res.video_id}/summary.json" target="_blank">Open saved summary.json</a><a class="link-green" href="/report/${res.video_id}.pdf" target="_blank">Report PDF</a>`; } }
       function drawSpark(res){ const data=(res.frame_data||[]).map(r=>({x:r.frame_index, y:(r.angles && (r.angles.knee||r.angles.elbow))||0})); if(!data.length){ spark.innerHTML=''; return; } const w=600,h=60; const xs=data.map(d=>d.x), ys=data.map(d=>d.y); const minX=Math.min(...xs), maxX=Math.max(...xs); const minY=Math.min(...ys), maxY=Math.max(...ys); const sx=(x)=> (maxX===minX?0:((x-minX)/(maxX-minX))*w); const sy=(y)=> h - (maxY===minY? h/2:((y-minY)/(maxY-minY))*h); const pts=data.map(p=>`${sx(p.x)},${sy(p.y)}`).join(' '); const marks=data.map(p=>`<circle cx="${sx(p.x)}" cy="${sy(p.y)}" r="2.5" fill="#A855F7" />`).join(''); spark.innerHTML = `<polyline fill="none" stroke="#C1A6FF" stroke-width="2" points="${pts}" />${marks}`; }
       function renderThumbs(res){ const t=res.thumbnails||[]; if(!t.length){ thumbs.innerHTML = '<div class="thumb"><figcaption style="padding:6px 8px">No snapshots available</figcaption></div>'; return; } thumbs.innerHTML = t.map(it=>`<figure class="thumb"><img src="${it.path}" alt="rep ${it.rep_id}"/><figcaption>Rep ${it.rep_id} • ${it.exercise} • ${((it.angles&& (it.angles.knee||it.angles.elbow))||0).toFixed(1)}°</figcaption></figure>`).join(''); }
     </script>

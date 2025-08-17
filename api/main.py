@@ -189,15 +189,26 @@ async def analyze(file: UploadFile = File(...)):
             elapsed = max(1e-6, time.time() - t0)
             fps = JOB_FRAMES_DONE.get(job_id, 0) / elapsed
             _log(job_id, f"Processing done in {elapsed:.2f}s @ {fps:.2f} FPS")
-            with open(report_dir / "summary.json", "w", encoding="utf-8") as f:
+            # Persist under analysis video_id directory
+            analysis_id = str(result.get("video_id") or job_id)
+            result_dir = REPORT_ROOT / analysis_id
+            result_dir.mkdir(parents=True, exist_ok=True)
+            # Ensure input.mp4 is available under the analysis directory for frame and PDF
+            try:
+                if (result_dir / "input.mp4").exists() is False and path.exists():
+                    from shutil import copyfile
+                    copyfile(str(path), str(result_dir / "input.mp4"))
+            except Exception:
+                pass
+            with open(result_dir / "summary.json", "w", encoding="utf-8") as f:
                 json.dump(result, f, ensure_ascii=False, indent=2)
             # Generate annotated thumbnails for reps
             try:
-                _generate_thumbnails(video_path=path, result=result, out_dir=report_dir / "thumbs")
+                _generate_thumbnails(video_path=result_dir / "input.mp4", result=result, out_dir=result_dir / "thumbs", report_id=analysis_id)
                 _log(job_id, "Thumbnails generated")
             except Exception as thumb_exc:
                 _log(job_id, f"Thumbnail generation failed: {thumb_exc}")
-            JOBS[job_id] = {"status": "done", "video_id": result.get("video_id")}
+            JOBS[job_id] = {"status": "done", "video_id": analysis_id}
         except Exception as exc:
             _log(job_id, f"Error: {exc}")
             JOBS[job_id] = {"status": "error", "error": str(exc)}
@@ -278,7 +289,7 @@ async def frame(video_id: str, frame_index: int):
     return Response(content=buf.tobytes(), media_type='image/jpeg')
 
 
-def _generate_thumbnails(*, video_path: Path, result: dict, out_dir: Path) -> None:
+def _generate_thumbnails(*, video_path: Path, result: dict, out_dir: Path, report_id: str) -> None:
     import cv2
     out_dir.mkdir(parents=True, exist_ok=True)
     frame_data = result.get("frame_data") or []
@@ -313,7 +324,7 @@ def _generate_thumbnails(*, video_path: Path, result: dict, out_dir: Path) -> No
                     "exercise": item.get("exercise"),
                     "rep_id": item.get("rep_id"),
                     "angles": item.get("angles"),
-                    "path": f"/reports/{video_path.parent.name}/thumbs/{name}"
+                    "path": f"/reports/{report_id}/thumbs/{name}"
                 })
         cap.release()
     # write manifest
