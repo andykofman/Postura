@@ -9,6 +9,12 @@ import numpy as np
 from pose.backend import Keypoint
 from pose.smoothing import EmaSmoother, SmoothedKeypoint
 from .features import angle, horiz_offset, collinearity_residual
+from .utils import (
+    SQUAT_ALIGNMENT_TOL,
+    PUSHUP_ALIGNMENT_TOL,
+    SQUAT_KNEE_MAX_DEG,
+    PUSHUP_ELBOW_MAX_DEG,
+)
 from .fsm_pushup import PushupFSM
 from .fsm_squat import SquatFSM
 
@@ -219,7 +225,12 @@ def analyze_video(frames_iter: Iterable[Sequence[Optional[Keypoint]]]) -> Dict[s
             # Evaluate form using the minimum knee angle observed during the bottom phase
             knee_degree = squat_min_knee_deg_current
             align_max_abs = squat_max_align_abs_current
-            is_ok = (np.isfinite(knee_degree) and knee_degree <= 110.0) and (np.isfinite(align_max_abs) and align_max_abs <= 0.05)
+            is_ok = (
+                np.isfinite(knee_degree)
+                and knee_degree <= float(SQUAT_KNEE_MAX_DEG)
+                and np.isfinite(align_max_abs)
+                and align_max_abs <= float(SQUAT_ALIGNMENT_TOL)
+            )
             if is_ok:
                 squat_good += 1
             frame_records.append(
@@ -239,7 +250,12 @@ def analyze_video(frames_iter: Iterable[Sequence[Optional[Keypoint]]]) -> Dict[s
             push_rep_id += 1
             elbow_deg = push_min_elbow_deg_current
             align_max_abs = push_max_align_abs_current
-            is_ok = (np.isfinite(elbow_deg) and elbow_deg <= 90.0) and (np.isfinite(align_max_abs) and align_max_abs <= 0.05)
+            is_ok = (
+                np.isfinite(elbow_deg)
+                and elbow_deg <= float(PUSHUP_ELBOW_MAX_DEG)
+                and np.isfinite(align_max_abs)
+                and align_max_abs <= float(PUSHUP_ALIGNMENT_TOL)
+            )
             if is_ok:
                 push_good += 1
             frame_records.append(
@@ -277,11 +293,11 @@ def analyze_video(frames_iter: Iterable[Sequence[Optional[Keypoint]]]) -> Dict[s
 
     if align_residuals_squat:
         mean_align = float(statistics.fmean(align_residuals_squat))
-        if mean_align > 0.05:
+        if mean_align > float(SQUAT_ALIGNMENT_TOL):
             squat_summary["common_issues"].append("BODY_LINE_BREAK")
     if align_residuals_push:
         mean_align_p = float(statistics.fmean(align_residuals_push))
-        if mean_align_p > 0.05:
+        if mean_align_p > float(PUSHUP_ALIGNMENT_TOL):
             push_summary["common_issues"].append("BODY_LINE_BREAK")
 
     result: Dict[str, object] = {

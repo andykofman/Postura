@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import io
 import os
+import threading
+from queue import Queue
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
 import numpy as np
 from fastapi import FastAPI, File, HTTPException, UploadFile
@@ -11,8 +12,15 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from analysis.analyzer import analyze_video
-from api.schemas import AnalyzeResponse, Summary, ExerciseSummary, FrameRecord
+from api.schemas import AnalyzeResponse
 from pose.backend import PoseBackend
+
+
+# Threading/env tuning to avoid oversubscription on Colab CPUs
+os.environ.setdefault("OMP_NUM_THREADS", "2")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "2")
+os.environ.setdefault("MKL_NUM_THREADS", "2")
+os.environ.setdefault("NUMEXPR_NUM_THREADS", "2")
 
 
 app = FastAPI(title="Postura API")
@@ -30,8 +38,21 @@ if WEB_ROOT.exists():
 app.mount("/reports", StaticFiles(directory=str(REPORT_ROOT)), name="reports")
 
 
+def _configure_opencv_threads() -> None:
+    try:
+        import cv2  # type: ignore
+        cv2.setUseOptimized(True)
+        try:
+            cv2.setNumThreads(2)
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+
 def _iter_frames_from_video_bytes(data: bytes):
     import cv2  # type: ignore
+    _configure_opencv_threads()
     tmp_dir = Path("/tmp")
     tmp_dir.mkdir(parents=True, exist_ok=True)
     tmp_path = tmp_dir / "upload.mp4"
@@ -41,6 +62,23 @@ def _iter_frames_from_video_bytes(data: bytes):
     cap = cv2.VideoCapture(str(tmp_path))
     if not cap.isOpened():
         raise RuntimeError("Failed to open uploaded video")
+
+    # Producer-consumer pipeline: overlap decode (producer) and inference (consumer)
+    frame_queue: Queue[Optional[np.ndarray]] = Queue(maxsize=16)
+
+    def producer() -> None:
+        try:
+            while True:
+                ok, frame = cap.read()
+                if not ok:
+                    break
+                frame_queue.put(frame, block=True)
+        finally:
+            # Signal end of stream
+            frame_queue.put(None)
+
+    prod_thread = threading.Thread(target=producer, name="decoder-producer", daemon=True)
+    prod_thread.start()
 
     # Build backend with fallback when mediapipe is unavailable (e.g., unit tests)
     backend: Optional[PoseBackend]
@@ -57,8 +95,8 @@ def _iter_frames_from_video_bytes(data: bytes):
     try:
         with backend as b:
             while True:
-                ok, frame = cap.read()
-                if not ok:
+                frame = frame_queue.get(block=True)
+                if frame is None:
                     break
                 kps = b.infer(frame)
                 yield kps
