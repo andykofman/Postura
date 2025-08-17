@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Postura • Results</title>
+    <style>
+      :root { --muted:#9CA3AF; --accent:#A855F7; --accent-2:#C1A6FF; --light:#E5E7EB; --bg:#0B0F14; --card:#0F141B; --border:rgba(156,163,175,.18); --success:#22c55e; --shadow:0 10px 30px rgba(168,85,247,.15),0 6px 16px rgba(193,166,255,.08);} 
+      *{ box-sizing:border-box } body{ margin:0; font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; background:var(--bg); color:var(--light) }
+      .wrap{ max-width:900px; margin:0 auto; padding:28px 20px }
+      .card{ background:var(--card); border:1px solid var(--border); border-radius:14px; padding:18px; box-shadow:var(--shadow); margin-top:12px }
+      .title{ display:flex; align-items:center; justify-content:space-between; gap:12px }
+      .links{ display:flex; gap:10px; flex-wrap:wrap }
+      .link-green{ display:inline-block; padding:8px 12px; border-radius:999px; background:linear-gradient(135deg,#16a34a,#22c55e); color:#0B0F14; font-weight:700; text-decoration:none }
+      .muted{ color:var(--muted) }
+      pre{ background:rgba(0,0,0,.35); border:1px solid var(--border); border-radius:10px; padding:10px; overflow:auto }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="title">
+        <h2 style="margin:0">Postura • Results</h2>
+        <div class="links">
+          <a id="lnkPdf" class="link-green" target="_blank">Open PDF report</a>
+          <a id="lnkJson" class="link-green" target="_blank">Open summary.json</a>
+          <a href="/ui/app.html" class="link-green" style="background:linear-gradient(135deg,#A855F7,#C1A6FF)">Back to analyzer</a>
+        </div>
+      </div>
+      <div class="muted" id="vidHint">video_id: </div>
+      <div class="card">
+        <h3 style="margin:0 0 8px 0">Summary preview</h3>
+        <pre id="preview">Loading…</pre>
+      </div>
+      <div class="card">
+        <h3 style="margin:0 0 8px 0">Annotated snapshots</h3>
+        <div id="thumbs" style="display:grid; grid-template-columns: repeat(auto-fill,minmax(220px,1fr)); gap:10px"></div>
+      </div>
+    </div>
+    <script>
+      const q = new URLSearchParams(location.search);
+      const id = q.get('video_id');
+      document.getElementById('vidHint').textContent = `video_id: ${id||'unknown'}`;
+      const lnkPdf = document.getElementById('lnkPdf');
+      const lnkJson = document.getElementById('lnkJson');
+      const preview = document.getElementById('preview');
+      const thumbs = document.getElementById('thumbs');
+      if(id){
+        lnkPdf.href = `/report/${id}.pdf`;
+        lnkJson.href = `/reports/${id}/summary.json`;
+        fetch(`/result/${id}`).then(r=>r.json()).then(data=>{
+          preview.textContent = JSON.stringify(data.summary||data,null,2);
+          const t=data.thumbnails||[];
+          thumbs.innerHTML = t.length? t.map(it=>`<figure style="border:1px solid var(--border); border-radius:10px; overflow:hidden; background:rgba(255,255,255,.02)"><img src="${it.path}" style="width:100%"/><figcaption style="padding:6px 8px; color:var(--muted)">Rep ${it.rep_id} • ${it.exercise}</figcaption></figure>`).join('') : '<div class="muted">No snapshots available</div>';
+        }).catch(()=>{ preview.textContent='Failed to load result'; });
+      }else{
+        preview.textContent = 'Missing video_id parameter';
+      }
+    </script>
+  </body>
+</html>
+
+
