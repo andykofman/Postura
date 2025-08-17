@@ -304,30 +304,34 @@ def analyze_video(frames_iter: Iterable[Sequence[Optional[Keypoint]]]) -> Dict[s
             push_max_align_abs_current = 0.0
 
     # Summaries and common issues (heuristics)
-    push_summary: Dict[str, object] = {"total_reps": pushup_fsm.state.reps, "good_form_reps": push_good, "common_issues": []}
-    squat_summary: Dict[str, object] = {"total_reps": squat_fsm.state.reps, "good_form_reps": squat_good, "common_issues": []}
+    total_push = int(pushup_fsm.state.reps)
+    total_squat = int(squat_fsm.state.reps)
+    push_summary: Dict[str, object] = {"total_reps": total_push, "good_form_reps": push_good, "common_issues": []}
+    squat_summary: Dict[str, object] = {"total_reps": total_squat, "good_form_reps": squat_good, "common_issues": []}
 
-    if elbow_angles:
-        min_elbow = float(min(elbow_angles))
-        # If never went below approx 90 deg, report shallow pushups
-        if min_elbow > np.deg2rad(95.0):
-            push_summary["common_issues"].append("INSUFFICIENT_DEPTH")
-    else:
-        push_summary["common_issues"].append("NO_ELBOW_SIGNAL")
+    if total_push > 0:
+        if elbow_angles:
+            min_elbow = float(min(elbow_angles))
+            # If never went below approx 90 deg, report shallow pushups
+            if min_elbow > np.deg2rad(95.0):
+                push_summary["common_issues"].append("INSUFFICIENT_DEPTH")
+        else:
+            push_summary["common_issues"].append("NO_ELBOW_SIGNAL")
 
-    if knee_angles:
-        min_knee = float(min(knee_angles))
-        # If never went below ~110 deg, squat may be shallow
-        if min_knee > np.deg2rad(115.0):
-            squat_summary["common_issues"].append("INSUFFICIENT_DEPTH")
-    else:
-        squat_summary["common_issues"].append("NO_KNEE_SIGNAL")
+    if total_squat > 0:
+        if knee_angles:
+            min_knee = float(min(knee_angles))
+            # If never went below ~110 deg, squat may be shallow
+            if min_knee > np.deg2rad(115.0):
+                squat_summary["common_issues"].append("INSUFFICIENT_DEPTH")
+        else:
+            squat_summary["common_issues"].append("NO_KNEE_SIGNAL")
 
-    if align_residuals_squat:
+    if total_squat > 0 and align_residuals_squat:
         mean_align = float(statistics.fmean(align_residuals_squat))
         if mean_align > float(SQUAT_ALIGNMENT_TOL):
             squat_summary["common_issues"].append("BODY_LINE_BREAK")
-    if align_residuals_push:
+    if total_push > 0 and align_residuals_push:
         mean_align_p = float(statistics.fmean(align_residuals_push))
         if mean_align_p > float(PUSHUP_ALIGNMENT_TOL):
             push_summary["common_issues"].append("BODY_LINE_BREAK")

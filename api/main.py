@@ -15,6 +15,7 @@ from analysis.analyzer import analyze_video
 from api.schemas import AnalyzeResponse, JobSubmitResponse, JobStatusResponse
 from pose.backend import PoseBackend
 from pose.backend import Keypoint
+from pose.draw import draw_keypoints
 
 
 # Threading/env tuning to avoid oversubscription on Colab CPUs
@@ -190,6 +191,12 @@ async def analyze(file: UploadFile = File(...)):
             _log(job_id, f"Processing done in {elapsed:.2f}s @ {fps:.2f} FPS")
             with open(report_dir / "summary.json", "w", encoding="utf-8") as f:
                 json.dump(result, f, ensure_ascii=False, indent=2)
+            # Generate annotated thumbnails for reps
+            try:
+                _generate_thumbnails(video_path=path, result=result, out_dir=report_dir / "thumbs")
+                _log(job_id, "Thumbnails generated")
+            except Exception as thumb_exc:
+                _log(job_id, f"Thumbnail generation failed: {thumb_exc}")
             JOBS[job_id] = {"status": "done", "video_id": result.get("video_id")}
         except Exception as exc:
             _log(job_id, f"Error: {exc}")
@@ -229,7 +236,17 @@ async def result(video_id: str):
     if not p.exists():
         raise HTTPException(status_code=404, detail="summary.json missing")
     import json
-    return JSONResponse(content=json.loads(p.read_text(encoding="utf-8")))
+    data = json.loads(p.read_text(encoding="utf-8"))
+    # Merge thumbnails info if present
+    tjson = REPORT_ROOT / video_id / "thumbnails.json"
+    if tjson.exists():
+        try:
+            thumbs = json.loads(tjson.read_text(encoding="utf-8"))
+            if isinstance(thumbs, list):
+                data["thumbnails"] = thumbs
+        except Exception:
+            pass
+    return JSONResponse(content=data)
 
 
 @app.get("/logs/{video_id}", response_class=PlainTextResponse)
@@ -259,5 +276,48 @@ async def frame(video_id: str, frame_index: int):
     if not ok:
         raise HTTPException(status_code=500, detail="Encode error")
     return Response(content=buf.tobytes(), media_type='image/jpeg')
+
+
+def _generate_thumbnails(*, video_path: Path, result: dict, out_dir: Path) -> None:
+    import cv2
+    out_dir.mkdir(parents=True, exist_ok=True)
+    frame_data = result.get("frame_data") or []
+    # generate for first N reps per exercise to limit time
+    max_reps = 12
+    thumbs = []
+    with PoseBackend() as backend:
+        cap = cv2.VideoCapture(str(video_path))
+        if not cap.isOpened():
+            return
+        for item in frame_data[:max_reps]:
+            idx = int(item.get("frame_index", -1))
+            if idx < 0:
+                continue
+            cap.set(cv2.CAP_PROP_POS_FRAMES, float(idx))
+            ok, frame = cap.read()
+            if not ok:
+                continue
+            try:
+                kps = backend.infer(frame)
+                frame = draw_keypoints(frame, kps)
+            except Exception:
+                pass
+            name = f"rep_{item.get('exercise','rep')}_{item.get('rep_id',0)}_f{idx}.jpg"
+            path = out_dir / name
+            import cv2 as _cv2
+            ok, buf = _cv2.imencode('.jpg', frame)
+            if ok:
+                path.write_bytes(buf.tobytes())
+                thumbs.append({
+                    "frame_index": idx,
+                    "exercise": item.get("exercise"),
+                    "rep_id": item.get("rep_id"),
+                    "angles": item.get("angles"),
+                    "path": f"/reports/{video_path.parent.name}/thumbs/{name}"
+                })
+        cap.release()
+    # write manifest
+    import json
+    (video_path.parent / "thumbnails.json").write_text(json.dumps(thumbs, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
