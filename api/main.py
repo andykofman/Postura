@@ -189,26 +189,21 @@ async def analyze(file: UploadFile = File(...)):
             elapsed = max(1e-6, time.time() - t0)
             fps = JOB_FRAMES_DONE.get(job_id, 0) / elapsed
             _log(job_id, f"Processing done in {elapsed:.2f}s @ {fps:.2f} FPS")
-            # Persist under analysis video_id directory
-            analysis_id = str(result.get("video_id") or job_id)
-            result_dir = REPORT_ROOT / analysis_id
+            # Force result video_id to job_id to keep API/UI paths stable
+            result["video_id"] = job_id
+            # Persist under the job_id directory
+            result_dir = REPORT_ROOT / job_id
             result_dir.mkdir(parents=True, exist_ok=True)
-            # Ensure input.mp4 is available under the analysis directory for frame and PDF
-            try:
-                if (result_dir / "input.mp4").exists() is False and path.exists():
-                    from shutil import copyfile
-                    copyfile(str(path), str(result_dir / "input.mp4"))
-            except Exception:
-                pass
+            # input.mp4 already exists at path
             with open(result_dir / "summary.json", "w", encoding="utf-8") as f:
                 json.dump(result, f, ensure_ascii=False, indent=2)
             # Generate annotated thumbnails for reps
             try:
-                _generate_thumbnails(video_path=result_dir / "input.mp4", result=result, out_dir=result_dir / "thumbs", report_id=analysis_id)
+                _generate_thumbnails(video_path=result_dir / "input.mp4", result=result, out_dir=result_dir / "thumbs", report_id=job_id)
                 _log(job_id, "Thumbnails generated")
             except Exception as thumb_exc:
                 _log(job_id, f"Thumbnail generation failed: {thumb_exc}")
-            JOBS[job_id] = {"status": "done", "video_id": analysis_id}
+            JOBS[job_id] = {"status": "done", "video_id": job_id}
         except Exception as exc:
             _log(job_id, f"Error: {exc}")
             JOBS[job_id] = {"status": "error", "error": str(exc)}
