@@ -3,78 +3,41 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Postura – Web UI</title>
+    <title>Postura • Welcome</title>
     <style>
-      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 24px; }
-      .card { max-width: 900px; padding: 16px; border: 1px solid #ddd; border-radius: 10px; }
-      .row { margin: 10px 0; }
-      button { padding: 8px 16px; }
-      pre { background: #fafafa; padding: 12px; border-radius: 8px; overflow: auto; }
-      .muted { color: #666; }
-      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+      :root {
+        --muted: #9CA3AF;
+        --accent: #A855F7;
+        --accent-2: #C1A6FF;
+        --light: #E5E7EB;
+        --bg: #0B0F14;
+      }
+      * { box-sizing: border-box; }
+      html, body { height: 100%; }
+      body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; color: var(--light); background: var(--bg); }
+      .hero { position: relative; overflow: hidden; min-height: 100vh; display: grid; place-items: center; text-align: center; padding: 40px 24px; }
+      .blob { position: absolute; filter: blur(60px); opacity: .35; mix-blend-mode: screen; animation: float 18s ease-in-out infinite; pointer-events: none; }
+      .blob.p1 { width: 520px; height: 520px; background: #A855F7; top: -120px; left: -80px; }
+      .blob.p2 { width: 620px; height: 620px; background: #C1A6FF; bottom: -120px; right: -80px; animation-delay: 2s; }
+      @keyframes float { 0%,100%{ transform: translateY(0) translateX(0);} 50%{ transform: translateY(20px) translateX(10px);} }
+      h1 { font-size: clamp(28px, 5vw, 48px); margin: 0 0 10px; letter-spacing: .3px; text-shadow: 0 1px 0 rgba(0,0,0,.2); }
+      p { margin: 8px 0 18px; color: var(--muted); max-width: 780px; }
+      .cta { display: inline-block; padding: 14px 22px; border-radius: 14px; color: #0B0F14; font-weight: 800; text-decoration: none; background: linear-gradient(135deg, var(--accent), var(--accent-2)); box-shadow: 0 10px 30px rgba(168,85,247,0.15), 0 6px 16px rgba(193,166,255,0.08); }
+      .footer { position: absolute; bottom: 18px; width: 100%; text-align: center; color: var(--muted); font-size: 12px; }
     </style>
   </head>
   <body>
-    <div class="card">
-      <h2>Postura – Analyze</h2>
-      <div class="row">
-        <input id="file" type="file" accept="video/mp4" />
-        <button id="btn">Analyze</button>
-        <label style="margin-left:12px"><input id="fast" type="checkbox" /> Fast mode</label>
-        <span class="muted" style="margin-left:12px">Max 50MB MP4</span>
+    <section class="hero">
+      <div class="blob p1"></div>
+      <div class="blob p2"></div>
+      <div>
+        <h1>Postura</h1>
+        <p>Move better. Measure better. Turn your workout videos into actionable insights with MediaPipe-powered form analysis.</p>
+        <a class="cta" href="/ui/app.html">Open Analyzer</a>
       </div>
-      <div class="row" id="reportLink"></div>
-      <div class="grid">
-        <div>
-          <h3>Response</h3>
-          <pre id="out"></pre>
-        </div>
-        <div>
-          <h3>Saved Summary</h3>
-          <pre id="saved"></pre>
-        </div>
-      </div>
-    </div>
-
-    <script>
-      async function analyze() {
-        const input = document.getElementById('file');
-        const out = document.getElementById('out');
-        const saved = document.getElementById('saved');
-        const link = document.getElementById('reportLink');
-        if (!input.files.length) { alert('Select an MP4 file'); return; }
-        const file = input.files[0];
-        const form = new FormData();
-        form.append('file', file, file.name);
-        out.textContent = 'Uploading and analyzing...';
-        saved.textContent = '';
-        link.textContent = '';
-        try {
-          const fast = document.getElementById('fast').checked ? '?fast=1' : '';
-          const resp = await fetch(`/analyze${fast}`, { method: 'POST', body: form });
-          const text = await resp.text();
-          let data;
-          try { data = JSON.parse(text); } catch (e) { out.textContent = text; return; }
-          out.textContent = JSON.stringify(data, null, 2);
-          if (!resp.ok) return;
-          if (data && data.video_id) {
-            const href = `/reports/${data.video_id}/summary.json`;
-            link.innerHTML = `<a href="${href}" target="_blank">Open saved summary.json</a>`;
-            try {
-              const s = await fetch(href);
-              if (s.ok) {
-                const js = await s.json();
-                saved.textContent = JSON.stringify(js, null, 2);
-              }
-            } catch {}
-          }
-        } catch (err) {
-          out.textContent = String(err);
-        }
-      }
-      document.getElementById('btn').addEventListener('click', analyze);
-    </script>
+      <div class="footer">© <script>document.write(new Date().getFullYear())</script> Postura</div>
+    </section>
   </body>
-  </html>
+</html>
 
 
