@@ -20,7 +20,14 @@
       <div class="row">
         <input id="file" type="file" accept="video/mp4" />
         <button id="btn">Analyze</button>
-        <label style="margin-left:12px"><input id="fast" type="checkbox" /> Fast mode</label>
+        <label style="margin-left:12px">
+          Mode:
+          <select id="mode">
+            <option value="normal" selected>normal</option>
+            <option value="balanced">balanced</option>
+            <option value="fast">fast</option>
+          </select>
+        </label>
         <span class="muted" style="margin-left:12px">Max 50MB MP4</span>
       </div>
       <div class="row" id="reportLink"></div>
@@ -50,8 +57,9 @@
         saved.textContent = '';
         link.textContent = '';
         try {
-          const fast = document.getElementById('fast').checked ? '?fast=1' : '';
-          const submit = await fetch(`/analyze${fast}`, { method: 'POST', body: form });
+          const m = document.getElementById('mode').value;
+          const q = `?mode=${encodeURIComponent(m)}`;
+          const submit = await fetch(`/analyze${q}`, { method: 'POST', body: form });
           const submitText = await submit.text();
           let job;
           try { job = JSON.parse(submitText); } catch { out.textContent = submitText; return; }

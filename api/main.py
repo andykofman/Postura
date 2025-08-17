@@ -205,7 +205,8 @@ JOBS: dict[str, dict] = {}
 @app.post("/analyze", response_model=JobSubmitResponse, status_code=202)
 async def analyze(
     file: UploadFile = File(...),
-    fast: int = Query(0, description="Enable speed optimizations (decimation+resize+lighter model). 0=off,1=on"),
+    fast: int = Query(0, description="Deprecated. Use mode."),
+    mode: str = Query("normal", description="normal | balanced | fast"),
 ):
     # Validate content type
     content_type = file.content_type or ""
@@ -222,19 +223,30 @@ async def analyze(
     video_id = str(_uuid.uuid4())
     JOBS[video_id] = {"status": "queued", "error": None}
 
-    def worker(vid: str, payload: bytes, fast_flag: int) -> None:
+    def worker(vid: str, payload: bytes, fast_flag: int, work_mode: str) -> None:
         JOBS[vid] = {"status": "processing", "error": None}
         try:
-            if fast_flag:
+            # Back-compat: if fast=1 and mode not specified, treat as fast
+            effective_mode = work_mode or ("fast" if fast_flag else "normal")
+            if effective_mode == "fast":
                 frames_iter = _iter_frames_from_video_bytes(
                     payload,
-                    target_fps=12.0,
+                    target_fps=15.0,
                     target_width=640,
                     model_complexity=1,
                     adaptive_motion=True,
                     motion_resize_width=256,
-                    motion_threshold=2.0,
-                    max_consecutive_skips=3,
+                    motion_threshold=1.0,
+                    max_consecutive_skips=2,
+                    burst_preframes=8,
+                    burst_postframes=8,
+                )
+            elif effective_mode == "balanced":
+                # No decimation, resize for throughput, lighter model
+                frames_iter = _iter_frames_from_video_bytes(
+                    payload,
+                    target_width=640,
+                    model_complexity=1,
                 )
             else:
                 frames_iter = _iter_frames_from_video_bytes(payload)
@@ -249,7 +261,7 @@ async def analyze(
         except Exception as exc:
             JOBS[vid] = {"status": "error", "error": str(exc)}
 
-    threading.Thread(target=worker, args=(video_id, body, fast), daemon=True).start()
+    threading.Thread(target=worker, args=(video_id, body, fast, mode), daemon=True).start()
     return JobSubmitResponse(video_id=video_id, status="queued")
 
 
