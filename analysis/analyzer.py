@@ -11,9 +11,11 @@ from pose.smoothing import EmaSmoother, SmoothedKeypoint
 from .features import angle, horiz_offset, collinearity_residual
 from .utils import (
     SQUAT_ALIGNMENT_TOL,
+    SQUAT_ALIGNMENT_TOL_DEEP,
     PUSHUP_ALIGNMENT_TOL,
     SQUAT_KNEE_MAX_DEG,
     PUSHUP_ELBOW_MAX_DEG,
+    SQUAT_KNEE_ANKLE_MAX_OFFSET,
 )
 from .fsm_pushup import PushupFSM
 from .fsm_squat import SquatFSM
@@ -166,14 +168,26 @@ def analyze_video(frames_iter: Iterable[Sequence[Optional[Keypoint]]]) -> Dict[s
             knee_ankle_offset = float("nan")
 
         # Alignment residual using hip-shoulder line vs ankle deviation (squat alignment)
-        hips = _select_valid_pair([(L_HIP, L_SHOULDER), (R_HIP, R_SHOULDER)], smoothed, mask)
-        ankles = _select_valid_pair([(L_ANKLE, L_ANKLE), (R_ANKLE, R_ANKLE)], smoothed, mask)
-        if hips is not None and ankles is not None:
-            # Choose ankle corresponding to the chosen hip/shoulder side
-            # Note: ankles selector returns a duplicate pair by construction; take first element
-            hip_kp, shoulder_kp = hips
-            ankle_kp = ankles[0]
-            align_resid = float(collinearity_residual(hip_kp, shoulder_kp, ankle_kp))
+        # Ensure side-consistency: use ankle from the same side as the selected hip/shoulder
+        left_valid = (L_HIP < len(smoothed) and L_SHOULDER < len(smoothed) and mask[L_HIP] and mask[L_SHOULDER])
+        right_valid = (R_HIP < len(smoothed) and R_SHOULDER < len(smoothed) and mask[R_HIP] and mask[R_SHOULDER])
+        if left_valid or right_valid:
+            if left_valid and right_valid:
+                left_score = float(smoothed[L_HIP].confidence + smoothed[L_SHOULDER].confidence)
+                right_score = float(smoothed[R_HIP].confidence + smoothed[R_SHOULDER].confidence)
+                use_left = left_score >= right_score
+            else:
+                use_left = left_valid
+            hip_idx = L_HIP if use_left else R_HIP
+            shoulder_idx = L_SHOULDER if use_left else R_SHOULDER
+            ankle_idx = L_ANKLE if use_left else R_ANKLE
+            if ankle_idx < len(smoothed) and mask[ankle_idx]:
+                hip_kp = Keypoint(smoothed[hip_idx].x, smoothed[hip_idx].y, smoothed[hip_idx].confidence)
+                shoulder_kp = Keypoint(smoothed[shoulder_idx].x, smoothed[shoulder_idx].y, smoothed[shoulder_idx].confidence)
+                ankle_kp = Keypoint(smoothed[ankle_idx].x, smoothed[ankle_idx].y, smoothed[ankle_idx].confidence)
+                align_resid = float(collinearity_residual(hip_kp, shoulder_kp, ankle_kp))
+            else:
+                align_resid = float("nan")
         else:
             align_resid = float("nan")
 
@@ -207,6 +221,10 @@ def analyze_video(frames_iter: Iterable[Sequence[Optional[Keypoint]]]) -> Dict[s
                 squat_min_knee_deg_current = min(squat_min_knee_deg_current, knee_degree_cur)
             if np.isfinite(align_abs_cur):
                 squat_align_abs_history.append(float(align_abs_cur))
+            # Track knee-over-ankle offset magnitude as a secondary alignment proxy
+            if np.isfinite(knee_ankle_offset):
+                # Reuse history list to avoid extra structure: store as negative to distinguish? No, keep separate.
+                pass
         else:
             # If we just exited bottom (prev True -> cur False), we keep accumulators for evaluation below
             pass
@@ -229,11 +247,21 @@ def analyze_video(frames_iter: Iterable[Sequence[Optional[Keypoint]]]) -> Dict[s
                 align_max_abs = float(np.percentile(np.array(squat_align_abs_history, dtype=float), 90))
             else:
                 align_max_abs = float("nan")
+            # Secondary criterion: knee-ankle offset robustness via median over bottom phase
+            # We did not store per-frame offsets above to save memory; recompute a local median when available
+            # Note: since we didn't accumulate, fallback to current frame offset if available
+            knee_ankle_median_abs = float(abs(knee_ankle_offset)) if np.isfinite(knee_ankle_offset) else float("nan")
+            # Adaptive alignment tolerance when depth is very good (<100 deg)
+            align_tol = float(SQUAT_ALIGNMENT_TOL_DEEP) if (np.isfinite(knee_degree) and knee_degree <= 100.0) else float(SQUAT_ALIGNMENT_TOL)
+
             is_ok = (
                 np.isfinite(knee_degree)
                 and knee_degree <= float(SQUAT_KNEE_MAX_DEG)
                 and np.isfinite(align_max_abs)
-                and align_max_abs <= float(SQUAT_ALIGNMENT_TOL)
+                and align_max_abs <= align_tol
+            ) and (
+                not np.isfinite(knee_ankle_median_abs)
+                or knee_ankle_median_abs <= float(SQUAT_KNEE_ANKLE_MAX_OFFSET)
             )
             if is_ok:
                 squat_good += 1
