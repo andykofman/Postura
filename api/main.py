@@ -93,6 +93,8 @@ def _iter_frames_from_video_bytes(
             # Keep a small ring buffer of preframes to flush when we decide to send
             from collections import deque
             prebuf = deque(maxlen=max(0, int(burst_preframes)))
+            total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+            JOB_FRAMES[CURRENT_JOB_ID.get()] = max(1, total)
             while True:
                 ok, frame = cap.read()
                 if not ok:
@@ -162,6 +164,7 @@ def _iter_frames_from_video_bytes(
                         new_h = int(round(h * scale))
                         frame = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_AREA)
                 frame_queue.put(frame, block=True)
+                DONE_FRAMES[CURRENT_JOB_ID.get()] = DONE_FRAMES.get(CURRENT_JOB_ID.get(), 0) + 1
                 # Enable forward burst of consecutive frames after a send
                 if burst_postframes > 0:
                     burst_forward = burst_postframes
@@ -198,15 +201,25 @@ def _iter_frames_from_video_bytes(
         cap.release()
 
 
-# In-memory job registry (simple, for Colab). For production use a proper queue.
+# In-memory job registry and progress counters (simple, for Colab). For production use a proper queue.
 JOBS: dict[str, dict] = {}
+JOB_FRAMES: dict[str, int] = {}
+DONE_FRAMES: dict[str, int] = {}
+
+# Track current job id within iterator threads
+class _JobCtx:
+    _id: Optional[str] = None
+    def set(self, vid: str) -> None:
+        self._id = vid
+    def get(self) -> str:
+        return self._id or ""
+
+CURRENT_JOB_ID = _JobCtx()
 
 
 @app.post("/analyze", response_model=JobSubmitResponse, status_code=202)
 async def analyze(
     file: UploadFile = File(...),
-    fast: int = Query(0, description="Deprecated. Use mode."),
-    mode: str = Query("normal", description="normal | balanced | fast"),
 ):
     # Validate content type
     content_type = file.content_type or ""
@@ -223,33 +236,13 @@ async def analyze(
     video_id = str(_uuid.uuid4())
     JOBS[video_id] = {"status": "queued", "error": None}
 
-    def worker(vid: str, payload: bytes, fast_flag: int, work_mode: str) -> None:
+    def worker(vid: str, payload: bytes) -> None:
         JOBS[vid] = {"status": "processing", "error": None}
         try:
-            # Back-compat: if fast=1 and mode not specified, treat as fast
-            effective_mode = work_mode or ("fast" if fast_flag else "normal")
-            if effective_mode == "fast":
-                frames_iter = _iter_frames_from_video_bytes(
-                    payload,
-                    target_fps=15.0,
-                    target_width=640,
-                    model_complexity=1,
-                    adaptive_motion=True,
-                    motion_resize_width=256,
-                    motion_threshold=1.0,
-                    max_consecutive_skips=2,
-                    burst_preframes=8,
-                    burst_postframes=8,
-                )
-            elif effective_mode == "balanced":
-                # No decimation, resize for throughput, lighter model
-                frames_iter = _iter_frames_from_video_bytes(
-                    payload,
-                    target_width=640,
-                    model_complexity=1,
-                )
-            else:
-                frames_iter = _iter_frames_from_video_bytes(payload)
+            CURRENT_JOB_ID.set(vid)
+            JOB_FRAMES[vid] = 0
+            DONE_FRAMES[vid] = 0
+            frames_iter = _iter_frames_from_video_bytes(payload)
             result = analyze_video(frames_iter)
             # Persist report
             report_dir = Path("report") / str(result.get("video_id", vid))
@@ -261,7 +254,7 @@ async def analyze(
         except Exception as exc:
             JOBS[vid] = {"status": "error", "error": str(exc)}
 
-    threading.Thread(target=worker, args=(video_id, body, fast, mode), daemon=True).start()
+    threading.Thread(target=worker, args=(video_id, body), daemon=True).start()
     return JobSubmitResponse(video_id=video_id, status="queued")
 
 
@@ -270,7 +263,21 @@ async def status(video_id: str):
     job = JOBS.get(video_id)
     if not job:
         raise HTTPException(status_code=404, detail="Unknown video_id")
-    return JobStatusResponse(video_id=video_id, status=job.get("status", "unknown"), detail=job.get("error"))
+    # Progress & ETA if available
+    total = JOB_FRAMES.get(video_id)
+    done = DONE_FRAMES.get(video_id)
+    progress = None
+    eta = None
+    if total and done is not None:
+        progress = max(0.0, min(1.0, float(done) / float(total)))
+        # ETA not tracked precisely; leave None or estimate elsewhere
+    return JobStatusResponse(
+        video_id=video_id,
+        status=job.get("status", "unknown"),
+        detail=job.get("error"),
+        progress=progress,
+        eta_seconds=eta,
+    )
 
 
 @app.get("/result/{video_id}")

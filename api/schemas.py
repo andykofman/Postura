@@ -44,5 +44,7 @@ class JobStatusResponse(BaseModel):
     video_id: str
     status: str
     detail: Optional[str] = None
+    progress: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    eta_seconds: Optional[float] = Field(default=None, ge=0.0)
 
 

@@ -3,111 +3,217 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Postura – Web UI</title>
+    <title>Postura – Live Analyzer</title>
     <style>
-      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 24px; }
-      .card { max-width: 900px; padding: 16px; border: 1px solid #ddd; border-radius: 10px; }
-      .row { margin: 10px 0; }
-      button { padding: 8px 16px; }
-      pre { background: #fafafa; padding: 12px; border-radius: 8px; overflow: auto; }
-      .muted { color: #666; }
-      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+      :root {
+        --muted: #9CA3AF;
+        --accent: #A855F7;
+        --accent-2: #C1A6FF;
+        --light: #E5E7EB;
+        --bg: #0B0F14;
+        --card: #0F141B;
+        --card-border: rgba(156, 163, 175, 0.18);
+        --success: #22c55e;
+        --danger: #ef4444;
+        --warning: #f59e0b;
+        --shadow: 0 10px 30px rgba(168, 85, 247, 0.15), 0 6px 16px rgba(193, 166, 255, 0.08);
+      }
+      * { box-sizing: border-box; }
+      html, body { height: 100%; }
+      body {
+        margin: 0;
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+        color: var(--light);
+        background: radial-gradient(1200px 500px at 20% -10%, rgba(168,85,247,0.18), transparent 60%),
+                    radial-gradient(1000px 600px at 110% 10%, rgba(193,166,255,0.18), transparent 65%),
+                    var(--bg);
+      }
+      .container { max-width: 1100px; margin: 0 auto; padding: 28px; }
+      header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
+      .brand { display: flex; align-items: center; gap: 12px; }
+      .logo { width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(135deg, var(--accent), var(--accent-2)); box-shadow: var(--shadow); }
+      h1 { font-size: 22px; margin: 0; letter-spacing: 0.2px; }
+      .subtitle { color: var(--muted); font-size: 13px; margin-top: 4px; }
+      .grid { display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 18px; }
+      .card { background: var(--card); border: 1px solid var(--card-border); border-radius: 14px; padding: 18px; box-shadow: var(--shadow); }
+      .card h2 { margin: 0 0 10px 0; font-size: 18px; }
+      .dropzone { border: 2px dashed rgba(168,85,247,0.5); border-radius: 12px; padding: 24px; text-align: center; cursor: pointer; transition: border-color .2s ease, background-color .2s ease; background: rgba(255,255,255,0.02); }
+      .dropzone:hover { border-color: var(--accent); background: rgba(168,85,247,0.05); }
+      .controls { display: flex; align-items: center; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+      .btn { appearance: none; border: 0; border-radius: 10px; padding: 10px 16px; font-weight: 600; color: #0b0f14; background: linear-gradient(135deg, var(--accent), var(--accent-2)); cursor: pointer; box-shadow: var(--shadow); }
+      .btn:disabled { opacity: .5; cursor: not-allowed; }
+      .hint { color: var(--muted); font-size: 12px; }
+      .status-row { display: flex; align-items: center; gap: 10px; margin: 8px 0 12px; }
+      .pill { font-size: 12px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--card-border); color: var(--light); }
+      .pill.processing { border-color: var(--accent-2); background: rgba(193,166,255,0.12); }
+      .pill.done { border-color: var(--success); color: #10b981; background: rgba(16,185,129,0.12); }
+      .pill.error { border-color: var(--danger); color: #ef4444; background: rgba(239,68,68,0.12); }
+      .progress-wrap { width: 100%; height: 12px; background: rgba(255,255,255,0.06); border-radius: 999px; overflow: hidden; border: 1px solid var(--card-border); }
+      .progress-bar { height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width .25s ease; }
+      .eta { font-size: 12px; color: var(--muted); margin-left: 6px; }
+      pre { background: rgba(0,0,0,0.35); color: var(--light); padding: 12px; border-radius: 10px; overflow: auto; border: 1px solid var(--card-border); }
+      a { color: var(--light); text-decoration: none; border-bottom: 1px dotted var(--accent-2); }
+      a:hover { color: var(--accent-2); }
     </style>
   </head>
   <body>
-    <div class="card">
-      <h2>Postura – Analyze</h2>
-      <div class="row">
-        <input id="file" type="file" accept="video/mp4" />
-        <button id="btn">Analyze</button>
-        <label style="margin-left:12px">
-          Mode:
-          <select id="mode">
-            <option value="normal" selected>normal</option>
-            <option value="balanced">balanced</option>
-            <option value="fast">fast</option>
-          </select>
-        </label>
-        <span class="muted" style="margin-left:12px">Max 50MB MP4</span>
-      </div>
-      <div class="row" id="reportLink"></div>
-      <div class="grid">
-        <div>
-          <h3>Response</h3>
-          <pre id="out"></pre>
+    <div class="container">
+      <header>
+        <div class="brand">
+          <div class="logo"></div>
+          <div>
+            <h1>Postura • Live Analyzer</h1>
+            <div class="subtitle">Upload an MP4 (≤ 50MB). Processing runs in the background; your summary is saved under <code>/reports/{video_id}/summary.json</code>.</div>
+          </div>
         </div>
-        <div>
-          <h3>Saved Summary</h3>
-          <pre id="saved"></pre>
+      </header>
+      <div class="grid">
+        <div class="card">
+          <h2>1) Upload</h2>
+          <div id="drop" class="dropzone">
+            <strong>Drag & drop</strong> your video here, or click to choose
+            <div class="hint">Accepted type: video/mp4</div>
+            <input id="file" type="file" accept="video/mp4" hidden />
+          </div>
+          <div class="controls">
+            <button id="btn" class="btn" disabled>Analyze</button>
+            <span id="fileName" class="hint">No file selected</span>
+          </div>
+        </div>
+        <div class="card">
+          <h2>2) Status</h2>
+          <div class="status-row">
+            <span id="statusPill" class="pill">Idle</span>
+            <span id="eta" class="eta"></span>
+          </div>
+          <div class="progress-wrap"><div id="bar" class="progress-bar"></div></div>
+          <div id="reportLink" style="margin-top:10px"></div>
+        </div>
+      </div>
+      <div class="grid" style="margin-top:18px">
+        <div class="card">
+          <h2>Response</h2>
+          <pre id="out">{ "state": "waiting" }</pre>
+        </div>
+        <div class="card">
+          <h2>Saved Summary</h2>
+          <pre id="saved">// Will appear when ready</pre>
         </div>
       </div>
     </div>
-
     <script>
+      const fileInput = document.getElementById('file');
+      const dropzone = document.getElementById('drop');
+      const analyzeBtn = document.getElementById('btn');
+      const fileName = document.getElementById('fileName');
+      const out = document.getElementById('out');
+      const saved = document.getElementById('saved');
+      const link = document.getElementById('reportLink');
+      const bar = document.getElementById('bar');
+      const pill = document.getElementById('statusPill');
+      const etaEl = document.getElementById('eta');
+
+      function setPill(state) {
+        pill.className = 'pill';
+        if (state === 'processing') pill.classList.add('processing');
+        if (state === 'done') pill.classList.add('done');
+        if (state === 'error') pill.classList.add('error');
+        pill.textContent = state.charAt(0).toUpperCase() + state.slice(1);
+      }
+
+      function pickFile() { fileInput.click(); }
+      dropzone.addEventListener('click', pickFile);
+      dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.style.borderColor = 'var(--accent)'; });
+      dropzone.addEventListener('dragleave', () => { dropzone.style.borderColor = 'rgba(168,85,247,0.5)'; });
+      dropzone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+          fileInput.files = e.dataTransfer.files;
+          onFileChange();
+        }
+      });
+
+      fileInput.addEventListener('change', onFileChange);
+      function onFileChange(){
+        if (fileInput.files.length) {
+          const f = fileInput.files[0];
+          fileName.textContent = `${f.name} · ${(f.size/1024/1024).toFixed(2)} MB`;
+          analyzeBtn.disabled = false;
+        } else {
+          fileName.textContent = 'No file selected';
+          analyzeBtn.disabled = true;
+        }
+      }
+
+      analyzeBtn.addEventListener('click', analyze);
+
       async function analyze() {
-        const input = document.getElementById('file');
-        const out = document.getElementById('out');
-        const saved = document.getElementById('saved');
-        const link = document.getElementById('reportLink');
-        if (!input.files.length) { alert('Select an MP4 file'); return; }
-        const file = input.files[0];
+        if (!fileInput.files.length) { alert('Select an MP4 file'); return; }
+        const f = fileInput.files[0];
         const form = new FormData();
-        form.append('file', file, file.name);
-        out.textContent = 'Uploading and analyzing...';
+        form.append('file', f, f.name);
+        out.textContent = 'Uploading...';
         saved.textContent = '';
         link.textContent = '';
-        try {
-          const m = document.getElementById('mode').value;
-          const q = `?mode=${encodeURIComponent(m)}`;
-          const submit = await fetch(`/analyze${q}`, { method: 'POST', body: form });
-          const submitText = await submit.text();
-          let job;
-          try { job = JSON.parse(submitText); } catch { out.textContent = submitText; return; }
-          out.textContent = JSON.stringify(job, null, 2);
-          if (!submit.ok) return;
+        setPill('processing');
+        bar.style.width = '0%';
+        etaEl.textContent = '';
+        const start = Date.now();
 
-          // Poll job status until done
+        try {
+          const submit = await fetch('/analyze', { method: 'POST', body: form });
+          const txt = await submit.text();
+          let job; try { job = JSON.parse(txt); } catch { out.textContent = txt; setPill('error'); return; }
+          out.textContent = JSON.stringify(job, null, 2);
+          if (!submit.ok) { setPill('error'); return; }
+
           const vid = job.video_id;
-          async function poll() {
+          async function poll(){
             try {
               const s = await fetch(`/status/${vid}`);
               const info = await s.json();
               out.textContent = JSON.stringify(info, null, 2);
+              setPill(info.status || 'processing');
+              if (typeof info.progress === 'number') {
+                const pct = Math.round(info.progress * 100);
+                bar.style.width = `${pct}%`;
+                const elapsed = (Date.now() - start) / 1000;
+                if (info.progress > 0) {
+                  const remaining = elapsed * (1 - info.progress) / info.progress;
+                  etaEl.textContent = `ETA ${Math.max(1, Math.round(remaining))}s`;
+                }
+              }
               if (info.status === 'done') {
                 const r = await fetch(`/result/${vid}`);
                 if (r.ok) {
                   const res = await r.json();
                   out.textContent = JSON.stringify(res, null, 2);
+                  bar.style.width = '100%';
+                  etaEl.textContent = '';
+                  setPill('done');
                   if (res && res.video_id) {
                     const href = `/reports/${res.video_id}/summary.json`;
                     link.innerHTML = `<a href="${href}" target="_blank">Open saved summary.json</a>`;
-                    try {
-                      const s2 = await fetch(href);
-                      if (s2.ok) {
-                        const js = await s2.json();
-                        saved.textContent = JSON.stringify(js, null, 2);
-                      }
-                    } catch {}
+                    try { const s2 = await fetch(href); if (s2.ok) { const js = await s2.json(); saved.textContent = JSON.stringify(js, null, 2); } } catch {}
                   }
                 } else {
-                  out.textContent = await r.text();
+                  out.textContent = await r.text(); setPill('error');
                 }
               } else if (info.status === 'error') {
-                // Show error
-                saved.textContent = '';
+                setPill('error');
               } else {
-                setTimeout(poll, 1000);
+                setTimeout(poll, 900);
               }
             } catch (e) {
-              out.textContent = String(e);
+              out.textContent = String(e); setPill('error');
             }
           }
           poll();
         } catch (err) {
           out.textContent = String(err);
+          setPill('error');
         }
       }
-      document.getElementById('btn').addEventListener('click', analyze);
     </script>
   </body>
   </html>
