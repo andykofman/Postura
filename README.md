@@ -17,7 +17,7 @@ pip install -r requirements.txt -c constraints.txt
 uvicorn api.main:app --reload --host 0.0.0.0 --port 5000
 ```
 
-Open `http://localhost:5000/docs`.
+Open `http://localhost:5000/ui`.
 
 ### C) Run with Docker
 
@@ -28,7 +28,7 @@ docker build -t postura:cpu .
 docker run --rm -p 5000:5000 postura:cpu
 ```
 
-Open the interactive docs at `http://localhost:5000/docs`.
+Open the interactive UI at `http://localhost:5000/ui`.
 
 ## What’s inside (project layout)
 
