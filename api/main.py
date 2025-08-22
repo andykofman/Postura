@@ -63,10 +63,10 @@ def _get_env_float(name: str, default: float) -> float:
     except Exception:
         return default
 
-# Performance knobs (tunable via environment)
-POSTURA_TARGET_FPS = _get_env_float("POSTURA_TARGET_FPS", 12.0)  # <= 0 disables decimation
-POSTURA_TARGET_WIDTH = _get_env_int("POSTURA_TARGET_WIDTH", 720)  # <= 0 disables resize
-POSTURA_MODEL_COMPLEXITY = _get_env_int("POSTURA_MODEL_COMPLEXITY", 1)  # 0/1/2
+# Performance knobs (tunable via environment) — defaults preserve original accuracy
+POSTURA_TARGET_FPS = _get_env_float("POSTURA_TARGET_FPS", 0.0)  # <= 0 disables decimation
+POSTURA_TARGET_WIDTH = _get_env_int("POSTURA_TARGET_WIDTH", 0)  # <= 0 disables resize
+POSTURA_MODEL_COMPLEXITY = _get_env_int("POSTURA_MODEL_COMPLEXITY", 2)  # 0/1/2
 
 
 
