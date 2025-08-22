@@ -7,11 +7,10 @@
   ],
   "headers": [
     {
-      "source": "/ui/(.*)\\.json",
+      "source": "/ui/(.*).json",
       "headers": [
         { "key": "Cache-Control", "value": "no-store" }
       ]
     }
-  ]
   ]
 }
