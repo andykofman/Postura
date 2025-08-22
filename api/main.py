@@ -29,6 +29,12 @@ os.environ.setdefault("OPENBLAS_NUM_THREADS", str(optimal_threads))
 os.environ.setdefault("MKL_NUM_THREADS", str(optimal_threads))
 os.environ.setdefault("NUMEXPR_NUM_THREADS", str(optimal_threads))
 
+# MediaPipe/TensorFlow optimizations for Render's AVX2-capable CPUs
+os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")  # Reduce TF logging overhead
+os.environ.setdefault("TF_ENABLE_ONEDNN_OPTS", "1")  # Enable Intel oneDNN optimizations
+os.environ.setdefault("TF_NUM_INTEROP_THREADS", str(optimal_threads))
+os.environ.setdefault("TF_NUM_INTRAOP_THREADS", str(optimal_threads))
+
 
 app = FastAPI(title="Postura API")
 app.add_middleware(
@@ -94,6 +100,8 @@ def _configure_opencv_threads() -> None:
             # Use optimal thread count for Render's 8-core environment
             optimal_cv_threads = min(multiprocessing.cpu_count(), 6)
             cv2.setNumThreads(optimal_cv_threads)
+            # Explicitly set OpenCV threading environment variable
+            os.environ.setdefault("OPENCV_NUM_THREADS", str(optimal_cv_threads))
         except Exception:
             pass
     except Exception:
@@ -467,7 +475,8 @@ async def debug_comparison() -> str:
     # Environment variables affecting performance
     perf_vars = [
         'OMP_NUM_THREADS', 'OPENBLAS_NUM_THREADS', 'MKL_NUM_THREADS', 
-        'NUMEXPR_NUM_THREADS', 'OPENCV_NUM_THREADS'
+        'NUMEXPR_NUM_THREADS', 'OPENCV_NUM_THREADS', 'TF_NUM_INTEROP_THREADS',
+        'TF_NUM_INTRAOP_THREADS', 'TF_ENABLE_ONEDNN_OPTS', 'MEDIAPIPE_DISABLE_GPU'
     ]
     info.append("\n=== PERFORMANCE ENVIRONMENT VARIABLES ===")
     for var in perf_vars:

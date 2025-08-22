@@ -50,8 +50,14 @@ class PoseBackend:
                     "mediapipe is required for PoseBackend. Install with `pip install mediapipe`"
                 ) from exc
 
+            # Optimize MediaPipe for CPU inference performance
+            import os
+            # Force CPU delegate with optimizations
+            os.environ.setdefault("MEDIAPIPE_DISABLE_GPU", "1")
+            
             self._mp_pose = mp.solutions.pose
             self._pose = self._mp_pose.Pose(
+                static_image_mode=False,  # Enable tracking for better performance
                 model_complexity=model_complexity,
                 enable_segmentation=enable_segmentation,
                 smooth_landmarks=smooth_landmarks,
