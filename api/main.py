@@ -19,11 +19,15 @@ from pose.backend import Keypoint
 from pose.draw import draw_keypoints
 
 
-# Threading/env tuning to avoid oversubscription on Colab CPUs
-os.environ.setdefault("OMP_NUM_THREADS", "2")
-os.environ.setdefault("OPENBLAS_NUM_THREADS", "2")
-os.environ.setdefault("MKL_NUM_THREADS", "2")
-os.environ.setdefault("NUMEXPR_NUM_THREADS", "2")
+# Threading/env tuning - optimized for Render's 8-core environment
+# Use environment variables if set, otherwise auto-detect optimal values
+import multiprocessing
+optimal_threads = min(multiprocessing.cpu_count(), 6)  # Leave 2 cores for system
+
+os.environ.setdefault("OMP_NUM_THREADS", str(optimal_threads))
+os.environ.setdefault("OPENBLAS_NUM_THREADS", str(optimal_threads))
+os.environ.setdefault("MKL_NUM_THREADS", str(optimal_threads))
+os.environ.setdefault("NUMEXPR_NUM_THREADS", str(optimal_threads))
 
 
 app = FastAPI(title="Postura API")
@@ -64,9 +68,13 @@ def _get_env_float(name: str, default: float) -> float:
         return default
 
 # Performance knobs (tunable via environment) — defaults preserve original accuracy
+# These can be overridden via environment variables for Render optimization
 POSTURA_TARGET_FPS = _get_env_float("POSTURA_TARGET_FPS", 0.0)  # <= 0 disables decimation
 POSTURA_TARGET_WIDTH = _get_env_int("POSTURA_TARGET_WIDTH", 0)  # <= 0 disables resize
 POSTURA_MODEL_COMPLEXITY = _get_env_int("POSTURA_MODEL_COMPLEXITY", 2)  # 0/1/2
+
+# Render-specific optimizations - can be tuned via environment
+POSTURA_RENDER_OPTIMIZED = _get_env_int("POSTURA_RENDER_OPTIMIZED", 1)  # Enable Render optimizations
 
 
 
@@ -75,7 +83,9 @@ def _configure_opencv_threads() -> None:
         import cv2  # type: ignore
         cv2.setUseOptimized(True)
         try:
-            cv2.setNumThreads(2)
+            # Use optimal thread count for Render's 8-core environment
+            optimal_cv_threads = min(multiprocessing.cpu_count(), 6)
+            cv2.setNumThreads(optimal_cv_threads)
         except Exception:
             pass
     except Exception:
@@ -98,7 +108,9 @@ def _iter_frames_from_video_file(
         raise RuntimeError("Failed to open uploaded video")
 
     # Producer-consumer pipeline: overlap decode (producer) and inference (consumer)
-    frame_queue: Queue[Optional[np.ndarray]] = Queue(maxsize=16)
+    # Optimize queue size for Render's 8-core environment
+    queue_size = 32 if POSTURA_RENDER_OPTIMIZED else 16
+    frame_queue: Queue[Optional[np.ndarray]] = Queue(maxsize=queue_size)
     # Determine decimation stride if requested
     orig_fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)

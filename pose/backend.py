@@ -31,6 +31,8 @@ class PoseBackend:
         min_detection_confidence: float = 0.5,
         min_tracking_confidence: float = 0.5,
         pose_model: Optional[object] = None,
+        enable_segmentation: bool = False,
+        smooth_landmarks: bool = True,
     ) -> None:
         """
         If pose_model is provided, it must expose a .process(np.ndarray[R,G,B]) -> result
@@ -51,8 +53,8 @@ class PoseBackend:
             self._mp_pose = mp.solutions.pose
             self._pose = self._mp_pose.Pose(
                 model_complexity=model_complexity,
-                enable_segmentation=False,
-                smooth_landmarks=True,
+                enable_segmentation=enable_segmentation,
+                smooth_landmarks=smooth_landmarks,
                 min_detection_confidence=min_detection_confidence,
                 min_tracking_confidence=min_tracking_confidence,
             )
