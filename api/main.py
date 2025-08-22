@@ -76,6 +76,10 @@ POSTURA_MODEL_COMPLEXITY = _get_env_int("POSTURA_MODEL_COMPLEXITY", 2)  # 0/1/2
 # Render-specific optimizations - can be tuned via environment
 POSTURA_RENDER_OPTIMIZED = _get_env_int("POSTURA_RENDER_OPTIMIZED", 1)  # Enable Render optimizations
 
+# Memory management optimizations
+POSTURA_MEMORY_OPTIMIZED = _get_env_int("POSTURA_MEMORY_OPTIMIZED", 1)  # Enable memory optimizations
+POSTURA_GC_INTERVAL = _get_env_int("POSTURA_GC_INTERVAL", 100)  # Garbage collection interval (frames)
+
 
 
 def _configure_opencv_threads() -> None:
@@ -102,14 +106,16 @@ def _iter_frames_from_video_file(
     on_progress: Optional[callable] = None,
 ) -> Iterator[Sequence[Optional[Keypoint]]]:
     import cv2  # type: ignore
+    import gc  # For memory management
+    
     _configure_opencv_threads()
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
         raise RuntimeError("Failed to open uploaded video")
 
     # Producer-consumer pipeline: overlap decode (producer) and inference (consumer)
-    # Optimize queue size for Render's 8-core environment
-    queue_size = 32 if POSTURA_RENDER_OPTIMIZED else 16
+    # Optimize queue size for Render's 8-core environment - reduced for memory efficiency
+    queue_size = 16 if POSTURA_RENDER_OPTIMIZED else 8  # Reduced from 32 to prevent memory bloat
     frame_queue: Queue[Optional[np.ndarray]] = Queue(maxsize=queue_size)
     # Determine decimation stride if requested
     orig_fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
@@ -164,14 +170,27 @@ def _iter_frames_from_video_file(
 
     try:
         with backend as b:
+            frame_count = 0
             while True:
                 frame = frame_queue.get(block=True)
                 if frame is None:
                     break
+                
+                # Memory management: periodic cleanup every N frames
+                frame_count += 1
+                if POSTURA_MEMORY_OPTIMIZED and frame_count % POSTURA_GC_INTERVAL == 0:
+                    gc.collect()  # Force garbage collection
+                
                 kps = b.infer(frame)
                 yield kps
+                
+                # Clear frame reference to help garbage collection
+                if POSTURA_MEMORY_OPTIMIZED:
+                    del frame
     finally:
         cap.release()
+        if POSTURA_MEMORY_OPTIMIZED:
+            gc.collect()  # Final cleanup
 
 
 JOBS: dict[str, dict] = {}
@@ -329,6 +348,8 @@ async def system_info() -> str:
     info.append(f"CPU Count (logical): {psutil.cpu_count(logical=True)}")
     info.append(f"Memory Total: {psutil.virtual_memory().total / (1024**3):.2f} GB")
     info.append(f"Memory Available: {psutil.virtual_memory().available / (1024**3):.2f} GB") 
+    info.append(f"Memory Used: {psutil.virtual_memory().used / (1024**3):.2f} GB")
+    info.append(f"Memory Percent: {psutil.virtual_memory().percent:.1f}%")
     info.append(f"CPU Usage: {psutil.cpu_percent(interval=1):.1f}%")
     
     # Thread settings
@@ -339,6 +360,10 @@ async def system_info() -> str:
         info.append(f"OpenCV Threads: {cv2.getNumThreads()}")
     except ImportError:
         info.append("OpenCV Threads: N/A (cv2 not available)")
+    
+    # Memory optimization status
+    info.append(f"POSTURA_RENDER_OPTIMIZED: {POSTURA_RENDER_OPTIMIZED}")
+    info.append(f"Queue Size: {16 if POSTURA_RENDER_OPTIMIZED else 8}")
     
     return "\n".join(info)
 
