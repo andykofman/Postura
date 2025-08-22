@@ -81,6 +81,9 @@ POSTURA_MEMORY_OPTIMIZED = _get_env_int("POSTURA_MEMORY_OPTIMIZED", 1)  # Enable
 POSTURA_GC_INTERVAL = _get_env_int("POSTURA_GC_INTERVAL", 50)  # Garbage collection interval (frames) - more aggressive
 POSTURA_MEMORY_THRESHOLD = _get_env_int("POSTURA_MEMORY_THRESHOLD", 70)  # Memory usage threshold for forced GC (%)
 
+# Processing mode optimization
+POSTURA_STREAMING_MODE = _get_env_int("POSTURA_STREAMING_MODE", 1)  # Enable streaming frame processing (no queuing)
+
 
 
 def _configure_opencv_threads() -> None:
@@ -107,61 +110,24 @@ def _iter_frames_from_video_file(
     on_progress: Optional[callable] = None,
 ) -> Iterator[Sequence[Optional[Keypoint]]]:
     import cv2  # type: ignore
-    import gc  # For memory management
-    import psutil  # For real-time memory monitoring
     
     _configure_opencv_threads()
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
         raise RuntimeError("Failed to open uploaded video")
 
-    # Producer-consumer pipeline: overlap decode (producer) and inference (consumer)
-    # Optimize queue size for Render's 8-core environment - reduced for memory efficiency
-    queue_size = 12 if POSTURA_RENDER_OPTIMIZED else 6  # Further reduced for aggressive memory management
-    frame_queue: Queue[Optional[np.ndarray]] = Queue(maxsize=queue_size)
+    # Streaming approach: process frames one-by-one without queuing
+    # This eliminates memory bloat and GC pressure entirely
+    if on_start:
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+        on_start(total_frames)
+    
     # Determine decimation stride if requested
     orig_fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
     stride = 1
     if target_fps and target_fps > 0 and orig_fps > 0:
         stride = max(1, int(round(orig_fps / float(target_fps))))
-
-    def producer() -> None:
-        try:
-            idx = 0
-            if callable(on_start):
-                try:
-                    on_start(total_frames)
-                except Exception:
-                    pass
-            while True:
-                ok, frame = cap.read()
-                if not ok:
-                    break
-                send = not (stride > 1 and (idx % stride) != 0)
-                idx += 1
-                if not send:
-                    continue
-                # Resize to target_width if configured
-                if target_width and target_width > 0:
-                    h, w = frame.shape[:2]
-                    if w > target_width:
-                        scale = float(target_width) / float(w)
-                        new_w = int(round(w * scale))
-                        new_h = int(round(h * scale))
-                        frame = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_AREA)
-                frame_queue.put(frame, block=True)
-                if callable(on_progress):
-                    try:
-                        on_progress(idx)
-                    except Exception:
-                        pass
-        finally:
-            # Signal end of stream
-            frame_queue.put(None)
-
-    prod_thread = threading.Thread(target=producer, name="decoder-producer", daemon=True)
-    prod_thread.start()
 
     # Build backend
     backend: Optional[PoseBackend]
@@ -173,44 +139,46 @@ def _iter_frames_from_video_file(
     try:
         with backend as b:
             frame_count = 0
+            idx = 0
+            
             while True:
-                frame = frame_queue.get(block=True)
-                if frame is None:
+                ok, frame = cap.read()
+                if not ok:
                     break
                 
-                # Advanced memory management: real-time monitoring + adaptive cleanup
+                # Apply decimation if requested
+                send = not (stride > 1 and (idx % stride) != 0)
+                idx += 1
+                if not send:
+                    continue
+                
                 frame_count += 1
                 
-                # Check memory usage every 25 frames
-                if POSTURA_MEMORY_OPTIMIZED and frame_count % 25 == 0:
-                    memory_percent = psutil.virtual_memory().percent
-                    
-                    # Force GC if memory usage exceeds threshold
-                    if memory_percent > POSTURA_MEMORY_THRESHOLD:
-                        gc.collect()
-                        # Additional aggressive cleanup
-                        if memory_percent > 80:
-                            gc.collect()  # Double GC for high memory pressure
+                # Resize to target_width if configured
+                if target_width and target_width > 0:
+                    h, w = frame.shape[:2]
+                    if w > target_width:
+                        scale = float(target_width) / float(w)
+                        new_w = int(round(w * scale))
+                        new_h = int(round(h * scale))
+                        frame = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_AREA)
                 
-                # Regular periodic cleanup
-                elif POSTURA_MEMORY_OPTIMIZED and frame_count % POSTURA_GC_INTERVAL == 0:
-                    gc.collect()
-                
+                # Process frame immediately and yield results
                 kps = b.infer(frame)
-                yield kps
                 
-                # Immediate frame cleanup for aggressive memory management
-                if POSTURA_MEMORY_OPTIMIZED:
-                    del frame
-                    # Force cleanup every 10 frames if memory pressure is high
-                    if frame_count % 10 == 0:
-                        memory_percent = psutil.virtual_memory().percent
-                        if memory_percent > 60:  # Lower threshold for frequent cleanup
-                            gc.collect()
+                # Update progress
+                if on_progress:
+                    try:
+                        on_progress(idx)
+                    except Exception:
+                        pass
+                
+                # Clear frame reference immediately
+                del frame
+                
+                yield kps
     finally:
         cap.release()
-        if POSTURA_MEMORY_OPTIMIZED:
-            gc.collect()  # Final cleanup
 
 
 JOBS: dict[str, dict] = {}
@@ -386,7 +354,7 @@ async def system_info() -> str:
     info.append(f"POSTURA_MEMORY_OPTIMIZED: {POSTURA_MEMORY_OPTIMIZED}")
     info.append(f"POSTURA_GC_INTERVAL: {POSTURA_GC_INTERVAL}")
     info.append(f"POSTURA_MEMORY_THRESHOLD: {POSTURA_MEMORY_THRESHOLD}%")
-    info.append(f"Queue Size: {12 if POSTURA_RENDER_OPTIMIZED else 6}")
+    info.append(f"Processing Mode: Streaming (no queue)")
     
     return "\n".join(info)
 
