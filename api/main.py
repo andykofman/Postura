@@ -10,6 +10,7 @@ import numpy as np
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import JSONResponse, Response, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 
 from analysis.analyzer import analyze_video
 from api.schemas import AnalyzeResponse, JobSubmitResponse, JobStatusResponse
@@ -26,6 +27,13 @@ os.environ.setdefault("NUMEXPR_NUM_THREADS", "2")
 
 
 app = FastAPI(title="Postura API")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB

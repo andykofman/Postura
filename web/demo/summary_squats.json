@@ -1,0 +1,45 @@
+{
+  "video_id": "e21c1627-f994-4351-a6c4-20764984517c",
+  "summary": {
+    "squats": {
+      "total_reps": 3,
+      "good_form_reps": 3,
+      "common_issues": []
+    },
+    "pushups": {
+      "total_reps": 0,
+      "good_form_reps": 0,
+      "common_issues": []
+    }
+  },
+  "frame_data": [
+    {
+      "frame_index": 146,
+      "exercise": "squat",
+      "rep_id": 1,
+      "is_form_ok": true,
+      "angles": {
+        "knee": 94.02854646127325
+      }
+    },
+    {
+      "frame_index": 428,
+      "exercise": "squat",
+      "rep_id": 2,
+      "is_form_ok": true,
+      "angles": {
+        "knee": 98.7556602865535
+      }
+    },
+    {
+      "frame_index": 609,
+      "exercise": "squat",
+      "rep_id": 3,
+      "is_form_ok": true,
+      "angles": {
+        "knee": 108.51918968105845
+      }
+    }
+  ]
+}
+
