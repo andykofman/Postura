@@ -110,17 +110,17 @@ def _iter_frames_from_video_file(
     on_progress: Optional[callable] = None,
 ) -> Iterator[Sequence[Optional[Keypoint]]]:
     import cv2  # type: ignore
+    import gc  # For memory management
     
     _configure_opencv_threads()
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
         raise RuntimeError("Failed to open uploaded video")
 
-    # Streaming approach: process frames one-by-one without queuing
-    # This eliminates memory bloat and GC pressure entirely
-    if on_start:
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
-        on_start(total_frames)
+    # Hybrid approach: small queue + aggressive cleanup
+    # This gives us pipeline efficiency without memory bloat
+    queue_size = 8 if POSTURA_RENDER_OPTIMIZED else 4  # Very small queue
+    frame_queue: Queue[Optional[np.ndarray]] = Queue(maxsize=queue_size)
     
     # Determine decimation stride if requested
     orig_fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
@@ -128,6 +128,43 @@ def _iter_frames_from_video_file(
     stride = 1
     if target_fps and target_fps > 0 and orig_fps > 0:
         stride = max(1, int(round(orig_fps / float(target_fps))))
+
+    def producer() -> None:
+        try:
+            idx = 0
+            if callable(on_start):
+                try:
+                    on_start(total_frames)
+                except Exception:
+                    pass
+            while True:
+                ok, frame = cap.read()
+                if not ok:
+                    break
+                send = not (stride > 1 and (idx % stride) != 0)
+                idx += 1
+                if not send:
+                    continue
+                # Resize to target_width if configured
+                if target_width and target_width > 0:
+                    h, w = frame.shape[:2]
+                    if w > target_width:
+                        scale = float(target_width) / float(w)
+                        new_w = int(round(w * scale))
+                        new_h = int(round(h * scale))
+                        frame = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_AREA)
+                frame_queue.put(frame, block=True)
+                if callable(on_progress):
+                    try:
+                        on_progress(idx)
+                    except Exception:
+                        pass
+        finally:
+            # Signal end of stream
+            frame_queue.put(None)
+
+    prod_thread = threading.Thread(target=producer, name="decoder-producer", daemon=True)
+    prod_thread.start()
 
     # Build backend
     backend: Optional[PoseBackend]
@@ -139,46 +176,27 @@ def _iter_frames_from_video_file(
     try:
         with backend as b:
             frame_count = 0
-            idx = 0
-            
             while True:
-                ok, frame = cap.read()
-                if not ok:
+                frame = frame_queue.get(block=True)
+                if frame is None:
                     break
-                
-                # Apply decimation if requested
-                send = not (stride > 1 and (idx % stride) != 0)
-                idx += 1
-                if not send:
-                    continue
                 
                 frame_count += 1
                 
-                # Resize to target_width if configured
-                if target_width and target_width > 0:
-                    h, w = frame.shape[:2]
-                    if w > target_width:
-                        scale = float(target_width) / float(w)
-                        new_w = int(round(w * scale))
-                        new_h = int(round(h * scale))
-                        frame = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_AREA)
-                
-                # Process frame immediately and yield results
+                # Process frame
                 kps = b.infer(frame)
                 
-                # Update progress
-                if on_progress:
-                    try:
-                        on_progress(idx)
-                    except Exception:
-                        pass
-                
-                # Clear frame reference immediately
+                # Aggressive cleanup: delete frame immediately
                 del frame
+                
+                # Force GC every 20 frames to prevent accumulation
+                if frame_count % 20 == 0:
+                    gc.collect()
                 
                 yield kps
     finally:
         cap.release()
+        gc.collect()  # Final cleanup
 
 
 JOBS: dict[str, dict] = {}
@@ -354,7 +372,8 @@ async def system_info() -> str:
     info.append(f"POSTURA_MEMORY_OPTIMIZED: {POSTURA_MEMORY_OPTIMIZED}")
     info.append(f"POSTURA_GC_INTERVAL: {POSTURA_GC_INTERVAL}")
     info.append(f"POSTURA_MEMORY_THRESHOLD: {POSTURA_MEMORY_THRESHOLD}%")
-    info.append(f"Processing Mode: Streaming (no queue)")
+    info.append(f"Processing Mode: Hybrid (small queue + aggressive cleanup)")
+    info.append(f"Queue Size: {8 if POSTURA_RENDER_OPTIMIZED else 4}")
     
     return "\n".join(info)
 
