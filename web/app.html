@@ -148,6 +148,8 @@
       function apiUrl(p){ return (API_BASE? (API_BASE + p) : p); }
       let visual=0, target=0, startTs=0, upTs=0, fetchTs=0, procTs=0, currentId=null, polling=false, lastFiles=null;
       (function anim(){ if(visual<target){ const d=Math.max(0.003,(target-visual)*0.12); visual=Math.min(target,visual+d); bar.style.width=`${Math.round(visual*100)}%`; } requestAnimationFrame(anim);})();
+      // Warmup ping
+      (async function(){ try { await fetch('https://postura-779u.onrender.com/health', { mode: 'no-cors', cache: 'no-store' }); } catch {} })();
       function setPill(s){ pill.className='pill'; pill.textContent=s.charAt(0).toUpperCase()+s.slice(1); pill.classList.add(s); }
       function fmtTimes(){ times.textContent = `Uploading: ${Math.round(upTs)}s • Fetching: ${Math.round(fetchTs)}s • Processing: ${Math.round(procTs)}s`; }
       drop.addEventListener('click', ()=>file.click()); drop.addEventListener('dragover',e=>{ e.preventDefault(); drop.classList.add('dragover');}); drop.addEventListener('dragleave',()=>{ drop.classList.remove('dragover');}); drop.addEventListener('drop', async e=>{ e.preventDefault(); drop.classList.remove('dragover'); if(e.dataTransfer.files&&e.dataTransfer.files[0]){ file.files=e.dataTransfer.files; onChange(); return;} const url = e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain'); if(url){ try{ const r=await fetch(url); const b=await r.blob(); const f = new File([b], url.split('/').pop()||'demo.mp4', { type:'video/mp4' }); const dt = new DataTransfer(); dt.items.add(f); file.files = dt.files; onChange(); }catch{} } }); file.addEventListener('change', onChange);

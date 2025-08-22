@@ -49,6 +49,25 @@ if WEB_ROOT.exists():
 app.mount("/reports", StaticFiles(directory=str(REPORT_ROOT)), name="reports")
 if DEMO_ROOT.exists():
     app.mount("/demo", StaticFiles(directory=str(DEMO_ROOT)), name="demo")
+def _get_env_int(name: str, default: int) -> int:
+    try:
+        v = int(str(os.getenv(name, str(default))).strip())
+        return v
+    except Exception:
+        return default
+
+def _get_env_float(name: str, default: float) -> float:
+    try:
+        v = float(str(os.getenv(name, str(default))).strip())
+        return v
+    except Exception:
+        return default
+
+# Performance knobs (tunable via environment)
+POSTURA_TARGET_FPS = _get_env_float("POSTURA_TARGET_FPS", 12.0)  # <= 0 disables decimation
+POSTURA_TARGET_WIDTH = _get_env_int("POSTURA_TARGET_WIDTH", 720)  # <= 0 disables resize
+POSTURA_MODEL_COMPLEXITY = _get_env_int("POSTURA_MODEL_COMPLEXITY", 1)  # 0/1/2
+
 
 
 def _configure_opencv_threads() -> None:
@@ -194,7 +213,14 @@ async def analyze(file: UploadFile = File(...)):
             JOB_FRAMES_DONE[job_id] = int(done)
 
         try:
-            frames_iter = _iter_frames_from_video_file(path, on_start=on_start, on_progress=on_progress)
+            frames_iter = _iter_frames_from_video_file(
+                path,
+                target_fps=POSTURA_TARGET_FPS if POSTURA_TARGET_FPS > 0 else None,
+                target_width=POSTURA_TARGET_WIDTH if POSTURA_TARGET_WIDTH > 0 else None,
+                model_complexity=POSTURA_MODEL_COMPLEXITY,
+                on_start=on_start,
+                on_progress=on_progress,
+            )
             t0 = time.time()
             result = analyze_video(frames_iter)
             elapsed = max(1e-6, time.time() - t0)
@@ -272,6 +298,11 @@ async def logs_endpoint(video_id: str):
     if p.exists():
         return p.read_text(encoding="utf-8")
     return ""
+
+
+@app.get("/health", response_class=PlainTextResponse)
+async def health() -> str:
+    return "ok"
 
 
 @app.get("/frame/{video_id}/{frame_index}")

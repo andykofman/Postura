@@ -98,6 +98,10 @@
         }
         requestAnimationFrame(step);
       })();
+      // Warmup ping to backend to mitigate cold starts
+      (async function(){
+        try { await fetch('https://postura-779u.onrender.com/health', { mode: 'no-cors', cache: 'no-store' }); } catch {}
+      })();
     </script>
   </body>
 </html>
