@@ -305,6 +305,32 @@ async def health() -> str:
     return "ok"
 
 
+@app.get("/system-info", response_class=PlainTextResponse) 
+async def system_info() -> str:
+    """Debug endpoint to check system resources on deployment platform"""
+    import psutil
+    import platform
+    
+    info = []
+    info.append(f"Platform: {platform.platform()}")
+    info.append(f"CPU Count: {psutil.cpu_count()}")
+    info.append(f"CPU Count (logical): {psutil.cpu_count(logical=True)}")
+    info.append(f"Memory Total: {psutil.virtual_memory().total / (1024**3):.2f} GB")
+    info.append(f"Memory Available: {psutil.virtual_memory().available / (1024**3):.2f} GB") 
+    info.append(f"CPU Usage: {psutil.cpu_percent(interval=1):.1f}%")
+    
+    # Thread settings
+    info.append(f"OMP_NUM_THREADS: {os.getenv('OMP_NUM_THREADS', 'unset')}")
+    
+    try:
+        import cv2
+        info.append(f"OpenCV Threads: {cv2.getNumThreads()}")
+    except ImportError:
+        info.append("OpenCV Threads: N/A (cv2 not available)")
+    
+    return "\n".join(info)
+
+
 @app.get("/frame/{video_id}/{frame_index}")
 async def frame(video_id: str, frame_index: int):
     import cv2
