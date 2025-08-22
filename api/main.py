@@ -42,10 +42,13 @@ ALLOWED_CONTENT_TYPES = {"video/mp4", "application/octet-stream"}
 # Mount static web UI and reports directory for end-to-end testing
 WEB_ROOT = Path("web").resolve()
 REPORT_ROOT = Path("report").resolve()
+DEMO_ROOT = Path("demo").resolve()
 REPORT_ROOT.mkdir(parents=True, exist_ok=True)
 if WEB_ROOT.exists():
     app.mount("/ui", StaticFiles(directory=str(WEB_ROOT), html=True), name="ui")
 app.mount("/reports", StaticFiles(directory=str(REPORT_ROOT)), name="reports")
+if DEMO_ROOT.exists():
+    app.mount("/demo", StaticFiles(directory=str(DEMO_ROOT)), name="demo")
 
 
 def _configure_opencv_threads() -> None:

@@ -76,10 +76,7 @@
             <button id="cancel" class="btn" style="display:none; background:linear-gradient(135deg,#ef4444,#f59e0b)">Cancel</button>
             <span id="fileName" class="hint">No file selected</span>
           </div>
-          <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:12px">
-            <button id="demoPushup" class="btn" title="Load a ready demo without uploading">Try Pushups Demo</button>
-            <button id="demoSquat" class="btn" title="Load a ready demo without uploading" style="background:linear-gradient(135deg,#22c55e,#84cc16)">Try Squats Demo</button>
-          </div>
+          
         </div>
         <div class="card">
           <h3>Status</h3>
@@ -96,14 +93,14 @@
           <div class="hint">Drag the badge into the dropzone above, or click “Load into uploader”.</div>
           <div style="display:grid; grid-template-columns: repeat(2,1fr); gap:12px; margin-top:10px">
             <div>
-              <video src="/ui/demo/pushup.mp4" controls style="width:100%; border-radius:8px; border:1px solid var(--border)"></video>
+              <video src="/demo/pushup.mp4" controls style="width:100%; border-radius:8px; border:1px solid var(--border)"></video>
               <div style="display:flex; gap:8px; align-items:center; margin-top:6px">
                 <span class="pill" draggable="true" id="dragPush">Drag: Pushups</span>
                 <button class="btn" id="loadPush">Load into uploader</button>
               </div>
             </div>
             <div>
-              <video src="/ui/demo/squats.mp4" controls style="width:100%; border-radius:8px; border:1px solid var(--border)"></video>
+              <video src="/demo/squats.mp4" controls style="width:100%; border-radius:8px; border:1px solid var(--border)"></video>
               <div style="display:flex; gap:8px; align-items:center; margin-top:6px">
                 <span class="pill" draggable="true" id="dragSquat">Drag: Squats</span>
                 <button class="btn" id="loadSquat">Load into uploader</button>
@@ -165,14 +162,13 @@
       function renderSummary(res){ const s=res.summary||{}; const sq=s.squats||{total_reps:0,good_form_reps:0,common_issues:[]}; const pu=s.pushups||{total_reps:0,good_form_reps:0,common_issues:[]}; squatsNum.textContent=String(sq.total_reps||0); pushupsNum.textContent=String(pu.total_reps||0); goodNum.textContent=String((sq.good_form_reps||0)+(pu.good_form_reps||0)); const allIssues=[...(sq.common_issues||[]), ...(pu.common_issues||[])]; chips.innerHTML = allIssues.map(x=>`<span class="chip">${x}</span>`).join(''); drawSpark(res); if(window.currentJobId){ link.innerHTML = `<a class="link-green" href="${apiUrl('/reports/'+window.currentJobId+'/summary.json')}" target="_blank">Open saved summary.json</a><a class="link-green" href="${apiUrl('/report/'+window.currentJobId+'.pdf')}" target="_blank">Report PDF</a>`; } }
       function drawSpark(res){ const data=(res.frame_data||[]).map(r=>({x:r.frame_index, y:(r.angles && (r.angles.knee||r.angles.elbow))||0})); if(!data.length){ spark.innerHTML=''; return; } const w=600,h=60; const xs=data.map(d=>d.x), ys=data.map(d=>d.y); const minX=Math.min(...xs), maxX=Math.max(...xs); const minY=Math.min(...ys), maxY=Math.max(...ys); const sx=(x)=> (maxX===minX?0:((x-minX)/(maxX-minX))*w); const sy=(y)=> h - (maxY===minY? h/2:((y-minY)/(maxY-minY))*h); const pts=data.map(p=>`${sx(p.x)},${sy(p.y)}`).join(' '); const marks=data.map(p=>`<circle cx="${sx(p.x)}" cy="${sy(p.y)}" r="2.5" fill="#A855F7" />`).join(''); spark.innerHTML = `<polyline fill="none" stroke="#C1A6FF" stroke-width="2" points="${pts}" />${marks}`; }
       function renderThumbs(res){ const t=res.thumbnails||[]; if(!t.length){ thumbs.innerHTML = '<div class="thumb"><figcaption style="padding:6px 8px">No snapshots available</figcaption></div>'; return; } thumbs.innerHTML = t.map(it=>`<figure class="thumb"><img src="${API_BASE? (API_BASE+it.path) : it.path}" alt="rep ${it.rep_id}"/><figcaption>Rep ${it.rep_id} • ${it.exercise} • ${((it.angles&& (it.angles.knee||it.angles.elbow))||0).toFixed(1)}°</figcaption></figure>`).join(''); }
-      document.getElementById('demoPushup').addEventListener('click', async ()=>{ reset(); setPill('processing'); try{ const res = await (await fetch('/ui/demo/summary_pushup.json', {cache:'no-store'})).json(); target=1.0; setPill('done'); renderSummary(res); renderThumbs(res); const id = res.video_id || 'demo-pushup'; const apiArg = API_BASE? `&api=${encodeURIComponent(API_BASE)}`:''; document.getElementById('doneModal').style.display='flex'; document.getElementById('mSum').href = `/ui/demo/summary_pushup.json`; document.getElementById('mPdf').href = '#'; document.getElementById('mPdf').setAttribute('title','PDF not available for demo'); document.getElementById('mPage').href = `/ui/result.html?demo=pushup${apiArg}`; }catch(e){ setPill('error'); }});
-      document.getElementById('demoSquat').addEventListener('click', async ()=>{ reset(); setPill('processing'); try{ const res = await (await fetch('/ui/demo/summary_squats.json', {cache:'no-store'})).json(); target=1.0; setPill('done'); renderSummary(res); renderThumbs(res); const apiArg = API_BASE? `&api=${encodeURIComponent(API_BASE)}`:''; document.getElementById('doneModal').style.display='flex'; document.getElementById('mSum').href = `/ui/demo/summary_squats.json`; document.getElementById('mPdf').href = '#'; document.getElementById('mPdf').setAttribute('title','PDF not available for demo'); document.getElementById('mPage').href = `/ui/result.html?demo=squats${apiArg}`; }catch(e){ setPill('error'); }});
+      
       
       function setupDrag(id, url){ const el=document.getElementById(id); if(!el) return; el.addEventListener('dragstart', ev=>{ ev.dataTransfer.setData('text/uri-list', url); ev.dataTransfer.effectAllowed='copy'; }); }
-      setupDrag('dragPush','/ui/demo/pushup.mp4'); setupDrag('dragSquat','/ui/demo/squats.mp4');
+      setupDrag('dragPush','/demo/pushup.mp4'); setupDrag('dragSquat','/demo/squats.mp4');
       async function loadIntoUploader(url){ try{ const r=await fetch(url); const b=await r.blob(); const f=new File([b], url.split('/').pop()||'demo.mp4', {type:'video/mp4'}); const dt=new DataTransfer(); dt.items.add(f); file.files=dt.files; onChange(); }catch{ alert('Failed to fetch demo'); } }
-      document.getElementById('loadPush').addEventListener('click', ()=> loadIntoUploader('/ui/demo/pushup.mp4'));
-      document.getElementById('loadSquat').addEventListener('click', ()=> loadIntoUploader('/ui/demo/squats.mp4'));
+      document.getElementById('loadPush').addEventListener('click', ()=> loadIntoUploader('/demo/pushup.mp4'));
+      document.getElementById('loadSquat').addEventListener('click', ()=> loadIntoUploader('/demo/squats.mp4'));
     </script>
   </body>
 </html>

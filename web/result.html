@@ -62,7 +62,7 @@
         fetch(src).then(r=>r.json()).then(data=>{
           preview.textContent = JSON.stringify(data.summary||data,null,2);
           const t=data.thumbnails||[];
-          thumbs.innerHTML = t.length? t.map(it=>`<figure style="border:1px solid var(--border); border-radius:10px; overflow:hidden; background:rgba(255,255,255,.02)"><img src="${it.path}" style="width:100%"/><figcaption style="padding:6px 8px; color:var(--muted)">Rep ${it.rep_id} • ${it.exercise}</figcaption></figure>`).join('') : '<div class="muted">No snapshots available</div>';
+          thumbs.innerHTML = t.length? t.map(it=>`<figure style="border:1px solid var(--border); border-radius:10px; overflow:hidden; background:rgba(255,255,255,.02)"><img src="${API_BASE? (API_BASE+it.path) : it.path}" style="width:100%"/><figcaption style="padding:6px 8px; color:var(--muted)">Rep ${it.rep_id} • ${it.exercise}</figcaption></figure>`).join('') : '<div class="muted">No snapshots available</div>';
         }).catch(()=>{ preview.textContent='Failed to load demo'; });
       } else if(id){
         hint.textContent = `video_id: ${id}`;
