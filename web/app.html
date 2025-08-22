@@ -10,7 +10,8 @@
       .container{ max-width:1200px; margin:0 auto; padding:28px 24px } header{ display:flex; align-items:center; gap:12px; margin-bottom:18px }
       .logo{ width:36px; height:36px; border-radius:10px; background:linear-gradient(135deg,var(--accent),var(--accent-2)); box-shadow:var(--shadow) }
       h1{ font-size:22px; margin:0; letter-spacing:.2px } .subtitle{ color:var(--muted); font-size:13px }
-      .grid{ display:grid; grid-template-columns:1.15fr .85fr; gap:18px } .card{ background:var(--card); border:1px solid var(--border); border-radius:14px; padding:18px; box-shadow:var(--shadow) }
+      .grid{ display:grid; grid-template-columns:1.15fr .85fr; gap:18px }
+      .card{ background:var(--card); border:1px solid var(--border); border-radius:14px; padding:18px; box-shadow:var(--shadow) }
       .btn{ appearance:none; border:0; border-radius:10px; padding:10px 16px; font-weight:600; color:#0b0f14; background:linear-gradient(135deg,var(--accent),var(--accent-2)); cursor:pointer; box-shadow:var(--shadow); position:relative; overflow:hidden }
       .hint{ color:var(--muted); font-size:12px }
       .status-row{ display:flex; align-items:center; gap:10px; margin:8px 0 12px; flex-wrap:wrap } .pill{ font-size:12px; padding:4px 10px; border-radius:999px; border:1px solid var(--border); color:var(--light) }
@@ -24,6 +25,20 @@
       .thumbs{ display:grid; grid-template-columns: repeat(auto-fill,minmax(220px,1fr)); gap:10px; margin-top:10px }
       .thumb{ border:1px solid var(--border); border-radius:10px; overflow:hidden; background:rgba(255,255,255,.02) } .thumb img{ width:100%; display:block } .thumb figcaption{ padding:6px 8px; font-size:12px; color:var(--muted) }
       .sparkline{ width:100%; height:60px; margin-top:8px }
+      @media (max-width: 900px){
+        .grid{ grid-template-columns: 1fr; }
+        .container{ padding:22px 16px }
+        header{ flex-wrap:wrap }
+        h1{ font-size:20px }
+        .subtitle{ font-size:12px }
+        .stats{ grid-template-columns: repeat(2,1fr) }
+      }
+      @media (max-width: 560px){
+        .stats{ grid-template-columns: 1fr }
+        .links{ flex-direction:column }
+        .btn{ width:100% }
+        .dropzone{ padding:22px 16px }
+      }
       .dropzone{ position:relative; border:2px solid transparent; border-radius:12px; padding:30px 24px; text-align:center; cursor:pointer; transition: transform .2s ease, box-shadow .2s ease, background-color .2s ease; background: linear-gradient(var(--card), var(--card)) padding-box, linear-gradient(135deg, var(--accent), var(--accent-2), var(--light), var(--accent)) border-box; background-origin: border-box; background-clip: padding-box, border-box; background-size: 100% 100%, 300% 300%; background-position: 0 0, 0% 50%; animation: edgeAnim 12s linear infinite; }
       @keyframes edgeAnim { 0%{ background-position: 0 0, 0% 50%; } 100%{ background-position: 0 0, 300% 50%; } }
       .dropzone:hover{ transform: translateY(-1px); box-shadow: 0 6px 16px rgba(168,85,247,.15); animation-play-state: paused; }
@@ -64,9 +79,6 @@
           <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:12px">
             <button id="demoPushup" class="btn" title="Load a ready demo without uploading">Try Pushups Demo</button>
             <button id="demoSquat" class="btn" title="Load a ready demo without uploading" style="background:linear-gradient(135deg,#22c55e,#84cc16)">Try Squats Demo</button>
-            <button id="demoPushupAnalyze" class="btn" title="Send the bundled pushup video to the API" style="background:linear-gradient(135deg,#f59e0b,#f97316)">Analyze Demo Pushups via API</button>
-            <button id="demoSquatAnalyze" class="btn" title="Send the bundled squats video to the API" style="background:linear-gradient(135deg,#f59e0b,#f97316)">Analyze Demo Squats via API</button>
-            <a id="cfgApi" class="hint" href="#">Set API base…</a>
           </div>
         </div>
         <div class="card">
@@ -76,6 +88,28 @@
           <div id="times" class="times">Uploading: 0s • Fetching: 0s • Processing: 0s</div>
           <div id="reportLink" class="links" style="margin-top:6px"></div>
           <details open style="margin-top:8px"><summary>Live logs</summary><textarea id="logs" readonly></textarea></details>
+        </div>
+      </div>
+      <div class="grid" style="margin-top:14px">
+        <div class="card">
+          <h3>Demo Library</h3>
+          <div class="hint">Drag the badge into the dropzone above, or click “Load into uploader”.</div>
+          <div style="display:grid; grid-template-columns: repeat(2,1fr); gap:12px; margin-top:10px">
+            <div>
+              <video src="/ui/demo/pushup.mp4" controls style="width:100%; border-radius:8px; border:1px solid var(--border)"></video>
+              <div style="display:flex; gap:8px; align-items:center; margin-top:6px">
+                <span class="pill" draggable="true" id="dragPush">Drag: Pushups</span>
+                <button class="btn" id="loadPush">Load into uploader</button>
+              </div>
+            </div>
+            <div>
+              <video src="/ui/demo/squats.mp4" controls style="width:100%; border-radius:8px; border:1px solid var(--border)"></video>
+              <div style="display:flex; gap:8px; align-items:center; margin-top:6px">
+                <span class="pill" draggable="true" id="dragSquat">Drag: Squats</span>
+                <button class="btn" id="loadSquat">Load into uploader</button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
       <div class="grid" style="margin-top:14px">
@@ -112,13 +146,14 @@
       const file=document.getElementById('file'); const drop=document.getElementById('drop'); const btn=document.getElementById('btn'); const retry=document.getElementById('retry'); const cancel=document.getElementById('cancel'); const nameEl=document.getElementById('fileName'); const bar=document.getElementById('bar'); const pill=document.getElementById('statusPill'); const eta=document.getElementById('eta'); const times=document.getElementById('times'); const out=document.getElementById('out'); const logs=document.getElementById('logs'); const link=document.getElementById('reportLink'); const squatsNum=document.getElementById('squatsNum'); const pushupsNum=document.getElementById('pushupsNum'); const goodNum=document.getElementById('goodNum'); const chips=document.getElementById('chips'); const spark=document.getElementById('spark'); const thumbs=document.getElementById('thumbs');
       const qs = new URLSearchParams(location.search);
       const savedBase = (typeof localStorage!=='undefined'? localStorage.getItem('API_BASE') : '') || '';
-      const API_BASE = (qs.get('api') || savedBase || '').replace(/\/$/, '');
+      const DEFAULT_BASE = 'https://postura-779u.onrender.com';
+      const API_BASE = (qs.get('api') || savedBase || DEFAULT_BASE || '').replace(/\/$/, '');
       function apiUrl(p){ return (API_BASE? (API_BASE + p) : p); }
       let visual=0, target=0, startTs=0, upTs=0, fetchTs=0, procTs=0, currentId=null, polling=false, lastFiles=null;
       (function anim(){ if(visual<target){ const d=Math.max(0.003,(target-visual)*0.12); visual=Math.min(target,visual+d); bar.style.width=`${Math.round(visual*100)}%`; } requestAnimationFrame(anim);})();
       function setPill(s){ pill.className='pill'; pill.textContent=s.charAt(0).toUpperCase()+s.slice(1); pill.classList.add(s); }
       function fmtTimes(){ times.textContent = `Uploading: ${Math.round(upTs)}s • Fetching: ${Math.round(fetchTs)}s • Processing: ${Math.round(procTs)}s`; }
-      drop.addEventListener('click', ()=>file.click()); drop.addEventListener('dragover',e=>{ e.preventDefault(); drop.classList.add('dragover');}); drop.addEventListener('dragleave',()=>{ drop.classList.remove('dragover');}); drop.addEventListener('drop', e=>{ e.preventDefault(); drop.classList.remove('dragover'); if(e.dataTransfer.files&&e.dataTransfer.files[0]){ file.files=e.dataTransfer.files; onChange(); }}); file.addEventListener('change', onChange);
+      drop.addEventListener('click', ()=>file.click()); drop.addEventListener('dragover',e=>{ e.preventDefault(); drop.classList.add('dragover');}); drop.addEventListener('dragleave',()=>{ drop.classList.remove('dragover');}); drop.addEventListener('drop', async e=>{ e.preventDefault(); drop.classList.remove('dragover'); if(e.dataTransfer.files&&e.dataTransfer.files[0]){ file.files=e.dataTransfer.files; onChange(); return;} const url = e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain'); if(url){ try{ const r=await fetch(url); const b=await r.blob(); const f = new File([b], url.split('/').pop()||'demo.mp4', { type:'video/mp4' }); const dt = new DataTransfer(); dt.items.add(f); file.files = dt.files; onChange(); }catch{} } }); file.addEventListener('change', onChange);
       function onChange(){ if(file.files.length){ const f=file.files[0]; nameEl.textContent=`${f.name} · ${(f.size/1024/1024).toFixed(2)} MB`; lastFiles=file.files; } }
       btn.addEventListener('click', start); retry.addEventListener('click', ()=>{ if(lastFiles){ file.files=lastFiles; start(); }}); cancel.addEventListener('click', ()=>{ polling=false; setPill('error'); });
       function reset(){ visual=0; target=0; startTs=0; upTs=0; fetchTs=0; procTs=0; out.textContent='{ "state": "waiting" }'; logs.value=''; link.textContent=''; chips.innerHTML=''; spark.innerHTML=''; thumbs.innerHTML='<div class="thumb"><figcaption style="padding:6px 8px">Awaiting thumbnails…</figcaption></div>'; eta.textContent=''; retry.style.display='none'; cancel.style.display='inline-block'; }
@@ -132,10 +167,12 @@
       function renderThumbs(res){ const t=res.thumbnails||[]; if(!t.length){ thumbs.innerHTML = '<div class="thumb"><figcaption style="padding:6px 8px">No snapshots available</figcaption></div>'; return; } thumbs.innerHTML = t.map(it=>`<figure class="thumb"><img src="${API_BASE? (API_BASE+it.path) : it.path}" alt="rep ${it.rep_id}"/><figcaption>Rep ${it.rep_id} • ${it.exercise} • ${((it.angles&& (it.angles.knee||it.angles.elbow))||0).toFixed(1)}°</figcaption></figure>`).join(''); }
       document.getElementById('demoPushup').addEventListener('click', async ()=>{ reset(); setPill('processing'); try{ const res = await (await fetch('/ui/demo/summary_pushup.json', {cache:'no-store'})).json(); target=1.0; setPill('done'); renderSummary(res); renderThumbs(res); const id = res.video_id || 'demo-pushup'; const apiArg = API_BASE? `&api=${encodeURIComponent(API_BASE)}`:''; document.getElementById('doneModal').style.display='flex'; document.getElementById('mSum').href = `/ui/demo/summary_pushup.json`; document.getElementById('mPdf').href = '#'; document.getElementById('mPdf').setAttribute('title','PDF not available for demo'); document.getElementById('mPage').href = `/ui/result.html?demo=pushup${apiArg}`; }catch(e){ setPill('error'); }});
       document.getElementById('demoSquat').addEventListener('click', async ()=>{ reset(); setPill('processing'); try{ const res = await (await fetch('/ui/demo/summary_squats.json', {cache:'no-store'})).json(); target=1.0; setPill('done'); renderSummary(res); renderThumbs(res); const apiArg = API_BASE? `&api=${encodeURIComponent(API_BASE)}`:''; document.getElementById('doneModal').style.display='flex'; document.getElementById('mSum').href = `/ui/demo/summary_squats.json`; document.getElementById('mPdf').href = '#'; document.getElementById('mPdf').setAttribute('title','PDF not available for demo'); document.getElementById('mPage').href = `/ui/result.html?demo=squats${apiArg}`; }catch(e){ setPill('error'); }});
-      async function analyzeDemo(path, name){ if(!API_BASE){ alert('Set API base first (click "Set API base…")'); return; } reset(); setPill('uploading'); try{ const r = await fetch(path, {cache:'no-store'}); const b = await r.blob(); const f = new File([b], name || 'demo.mp4', { type: 'video/mp4' }); await startWithFile(f); }catch(e){ setPill('error'); alert('Failed to fetch demo video'); } }
-      document.getElementById('demoPushupAnalyze').addEventListener('click', ()=> analyzeDemo('/ui/demo/pushup.mp4', 'pushup.mp4'));
-      document.getElementById('demoSquatAnalyze').addEventListener('click', ()=> analyzeDemo('/ui/demo/squats.mp4', 'squats.mp4'));
-      document.getElementById('cfgApi').addEventListener('click', (e)=>{ e.preventDefault(); const cur = API_BASE || ''; const v = prompt('Enter API base URL (e.g., https://your-backend.example.com). Leave blank to use same-origin.', cur); if(v!==null){ try{ if(typeof localStorage!=='undefined'){ if(v.trim()){ localStorage.setItem('API_BASE', v.trim()); } else { localStorage.removeItem('API_BASE'); } } location.href = location.pathname + (v.trim()? (`?api=${encodeURIComponent(v.trim())}`) : ''); }catch{ alert('Saved. Reload the page.'); location.reload(); } } });
+      
+      function setupDrag(id, url){ const el=document.getElementById(id); if(!el) return; el.addEventListener('dragstart', ev=>{ ev.dataTransfer.setData('text/uri-list', url); ev.dataTransfer.effectAllowed='copy'; }); }
+      setupDrag('dragPush','/ui/demo/pushup.mp4'); setupDrag('dragSquat','/ui/demo/squats.mp4');
+      async function loadIntoUploader(url){ try{ const r=await fetch(url); const b=await r.blob(); const f=new File([b], url.split('/').pop()||'demo.mp4', {type:'video/mp4'}); const dt=new DataTransfer(); dt.items.add(f); file.files=dt.files; onChange(); }catch{ alert('Failed to fetch demo'); } }
+      document.getElementById('loadPush').addEventListener('click', ()=> loadIntoUploader('/ui/demo/pushup.mp4'));
+      document.getElementById('loadSquat').addEventListener('click', ()=> loadIntoUploader('/ui/demo/squats.mp4'));
     </script>
   </body>
 </html>

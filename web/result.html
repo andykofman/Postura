@@ -12,6 +12,11 @@
       .title{ display:flex; align-items:center; justify-content:space-between; gap:12px }
       .links{ display:flex; gap:10px; flex-wrap:wrap }
       .link-green{ display:inline-block; padding:8px 12px; border-radius:999px; background:linear-gradient(135deg,#16a34a,#22c55e); color:#0B0F14; font-weight:700; text-decoration:none }
+      @media (max-width: 560px){
+        .title{ flex-direction: column; align-items: flex-start; gap: 8px }
+        .links{ width: 100% }
+        .link-green{ width: 100%; text-align: center }
+      }
       .muted{ color:var(--muted) }
       pre{ background:rgba(0,0,0,.35); border:1px solid var(--border); border-radius:10px; padding:10px; overflow:auto }
     </style>
@@ -41,7 +46,8 @@
       const id = q.get('video_id');
       const demo = q.get('demo');
       const savedBase = (typeof localStorage!=='undefined'? localStorage.getItem('API_BASE') : '') || '';
-      const API_BASE = (q.get('api') || savedBase || '').replace(/\/$/, '');
+      const DEFAULT_BASE = 'https://postura-779u.onrender.com';
+      const API_BASE = (q.get('api') || savedBase || DEFAULT_BASE || '').replace(/\/$/, '');
       function apiUrl(p){ return (API_BASE? (API_BASE + p) : p); }
       const hint = document.getElementById('vidHint');
       const lnkPdf = document.getElementById('lnkPdf');
