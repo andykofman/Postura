@@ -110,61 +110,19 @@ def _iter_frames_from_video_file(
     on_progress: Optional[callable] = None,
 ) -> Iterator[Sequence[Optional[Keypoint]]]:
     import cv2  # type: ignore
-    import gc  # For memory management
+    import time
     
     _configure_opencv_threads()
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
         raise RuntimeError("Failed to open uploaded video")
 
-    # Hybrid approach: small queue + aggressive cleanup
-    # This gives us pipeline efficiency without memory bloat
-    queue_size = 8 if POSTURA_RENDER_OPTIMIZED else 4  # Very small queue
-    frame_queue: Queue[Optional[np.ndarray]] = Queue(maxsize=queue_size)
-    
-    # Determine decimation stride if requested
+    # Back to original simple approach with detailed timing
     orig_fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
     stride = 1
     if target_fps and target_fps > 0 and orig_fps > 0:
         stride = max(1, int(round(orig_fps / float(target_fps))))
-
-    def producer() -> None:
-        try:
-            idx = 0
-            if callable(on_start):
-                try:
-                    on_start(total_frames)
-                except Exception:
-                    pass
-            while True:
-                ok, frame = cap.read()
-                if not ok:
-                    break
-                send = not (stride > 1 and (idx % stride) != 0)
-                idx += 1
-                if not send:
-                    continue
-                # Resize to target_width if configured
-                if target_width and target_width > 0:
-                    h, w = frame.shape[:2]
-                    if w > target_width:
-                        scale = float(target_width) / float(w)
-                        new_w = int(round(w * scale))
-                        new_h = int(round(h * scale))
-                        frame = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_AREA)
-                frame_queue.put(frame, block=True)
-                if callable(on_progress):
-                    try:
-                        on_progress(idx)
-                    except Exception:
-                        pass
-        finally:
-            # Signal end of stream
-            frame_queue.put(None)
-
-    prod_thread = threading.Thread(target=producer, name="decoder-producer", daemon=True)
-    prod_thread.start()
 
     # Build backend
     backend: Optional[PoseBackend]
@@ -173,30 +131,89 @@ def _iter_frames_from_video_file(
     except ImportError as exc:
         raise RuntimeError("mediapipe is not available in the API runtime") from exc
 
+    # Timing diagnostics
+    timing_stats = {
+        'read_times': [],
+        'resize_times': [],
+        'infer_times': [],
+        'total_frames': 0,
+        'processed_frames': 0
+    }
+
     try:
         with backend as b:
-            frame_count = 0
+            idx = 0
+            if callable(on_start):
+                try:
+                    on_start(total_frames)
+                except Exception:
+                    pass
+                    
             while True:
-                frame = frame_queue.get(block=True)
-                if frame is None:
+                # Time frame reading
+                read_start = time.time()
+                ok, frame = cap.read()
+                read_time = time.time() - read_start
+                
+                if not ok:
                     break
                 
-                frame_count += 1
+                timing_stats['total_frames'] += 1
+                timing_stats['read_times'].append(read_time)
                 
-                # Process frame
+                send = not (stride > 1 and (idx % stride) != 0)
+                idx += 1
+                if not send:
+                    continue
+                
+                timing_stats['processed_frames'] += 1
+                
+                # Time resize if needed
+                resize_start = time.time()
+                if target_width and target_width > 0:
+                    h, w = frame.shape[:2]
+                    if w > target_width:
+                        scale = float(target_width) / float(w)
+                        new_w = int(round(w * scale))
+                        new_h = int(round(h * scale))
+                        frame = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_AREA)
+                resize_time = time.time() - resize_start
+                timing_stats['resize_times'].append(resize_time)
+                
+                # Time inference
+                infer_start = time.time()
                 kps = b.infer(frame)
+                infer_time = time.time() - infer_start
+                timing_stats['infer_times'].append(infer_time)
                 
-                # Aggressive cleanup: delete frame immediately
-                del frame
+                # Log timing every 50 frames
+                if timing_stats['processed_frames'] % 50 == 0:
+                    avg_read = sum(timing_stats['read_times'][-50:]) / min(50, len(timing_stats['read_times']))
+                    avg_resize = sum(timing_stats['resize_times'][-50:]) / min(50, len(timing_stats['resize_times']))
+                    avg_infer = sum(timing_stats['infer_times'][-50:]) / min(50, len(timing_stats['infer_times']))
+                    print(f"Frame {timing_stats['processed_frames']}: read={avg_read*1000:.1f}ms, resize={avg_resize*1000:.1f}ms, infer={avg_infer*1000:.1f}ms")
                 
-                # Force GC every 20 frames to prevent accumulation
-                if frame_count % 20 == 0:
-                    gc.collect()
+                if callable(on_progress):
+                    try:
+                        on_progress(idx)
+                    except Exception:
+                        pass
                 
                 yield kps
     finally:
         cap.release()
-        gc.collect()  # Final cleanup
+        
+        # Print final timing stats
+        if timing_stats['processed_frames'] > 0:
+            avg_read = sum(timing_stats['read_times']) / len(timing_stats['read_times'])
+            avg_resize = sum(timing_stats['resize_times']) / len(timing_stats['resize_times'])
+            avg_infer = sum(timing_stats['infer_times']) / len(timing_stats['infer_times'])
+            print(f"FINAL TIMING STATS:")
+            print(f"  Average read time: {avg_read*1000:.1f}ms")
+            print(f"  Average resize time: {avg_resize*1000:.1f}ms") 
+            print(f"  Average inference time: {avg_infer*1000:.1f}ms")
+            print(f"  Total processed frames: {timing_stats['processed_frames']}")
+            print(f"  Theoretical max FPS: {1.0/(avg_read+avg_resize+avg_infer):.1f}")
 
 
 JOBS: dict[str, dict] = {}
@@ -372,8 +389,8 @@ async def system_info() -> str:
     info.append(f"POSTURA_MEMORY_OPTIMIZED: {POSTURA_MEMORY_OPTIMIZED}")
     info.append(f"POSTURA_GC_INTERVAL: {POSTURA_GC_INTERVAL}")
     info.append(f"POSTURA_MEMORY_THRESHOLD: {POSTURA_MEMORY_THRESHOLD}%")
-    info.append(f"Processing Mode: Hybrid (small queue + aggressive cleanup)")
-    info.append(f"Queue Size: {8 if POSTURA_RENDER_OPTIMIZED else 4}")
+    info.append(f"Processing Mode: Diagnostic (with detailed timing)")
+    info.append(f"Debug Endpoints: /debug-comparison for environment analysis")
     
     return "\n".join(info)
 
@@ -409,6 +426,84 @@ async def memory_status() -> str:
     if memory.percent > 70:
         info.append("Consider setting POSTURA_GC_INTERVAL=25 for more aggressive cleanup")
         info.append(" Consider setting POSTURA_MEMORY_THRESHOLD=60 for earlier intervention")
+    
+    return "\n".join(info)
+
+
+@app.get("/debug-comparison", response_class=PlainTextResponse)
+async def debug_comparison() -> str:
+    """Compare Render environment to typical local Docker environment"""
+    import psutil
+    import platform
+    import subprocess
+    import os
+    
+    info = []
+    info.append("=== RENDER ENVIRONMENT DEBUG ===")
+    info.append(f"Platform: {platform.platform()}")
+    info.append(f"Python: {platform.python_version()}")
+    info.append(f"CPU Count: {psutil.cpu_count()}")
+    info.append(f"Memory: {psutil.virtual_memory().total / (1024**3):.2f} GB")
+    
+    # Check OpenCV build info
+    try:
+        import cv2
+        info.append(f"OpenCV Version: {cv2.__version__}")
+        build_info = cv2.getBuildInformation()
+        # Extract key performance-related info
+        for line in build_info.split('\n'):
+            if any(keyword in line.lower() for keyword in ['parallel', 'thread', 'cpu', 'simd', 'optimization']):
+                info.append(f"  {line.strip()}")
+    except Exception as e:
+        info.append(f"OpenCV info error: {e}")
+    
+    # Check MediaPipe info
+    try:
+        import mediapipe as mp
+        info.append(f"MediaPipe Version: {mp.__version__}")
+    except Exception as e:
+        info.append(f"MediaPipe info error: {e}")
+    
+    # Environment variables affecting performance
+    perf_vars = [
+        'OMP_NUM_THREADS', 'OPENBLAS_NUM_THREADS', 'MKL_NUM_THREADS', 
+        'NUMEXPR_NUM_THREADS', 'OPENCV_NUM_THREADS'
+    ]
+    info.append("\n=== PERFORMANCE ENVIRONMENT VARIABLES ===")
+    for var in perf_vars:
+        info.append(f"{var}: {os.getenv(var, 'unset')}")
+    
+    # Check if we're in a container
+    try:
+        with open('/proc/1/cgroup', 'r') as f:
+            cgroup = f.read()
+            if 'docker' in cgroup or 'container' in cgroup:
+                info.append("\n✅ Running in container")
+            else:
+                info.append("\n⚠️  Not detected as container")
+    except:
+        info.append("\n❓ Container detection failed")
+    
+    # CPU features
+    try:
+        with open('/proc/cpuinfo', 'r') as f:
+            cpuinfo = f.read()
+            flags_line = [line for line in cpuinfo.split('\n') if line.startswith('flags')]
+            if flags_line:
+                flags = flags_line[0].split(':')[1].strip()
+                important_flags = [flag for flag in flags.split() if flag in ['avx', 'avx2', 'sse4_1', 'sse4_2', 'fma']]
+                info.append(f"\nCPU Performance Flags: {', '.join(important_flags)}")
+    except:
+        info.append("\n❓ CPU info not available")
+    
+    info.append("\n=== EXPECTED VS ACTUAL PERFORMANCE ===")
+    info.append("Expected on local Docker: 6 FPS")
+    info.append("Expected on Render (same specs): 5-6 FPS")
+    info.append("Current on Render: 1.2-1.5 FPS")
+    info.append("Performance Gap: 4-5x slower than expected")
+    
+    info.append("\n💡 This debug info will help identify the bottleneck!")
+    info.append("💡 Check the timing logs after processing a video!")
     
     return "\n".join(info)
 
