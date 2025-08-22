@@ -23,7 +23,8 @@ venv
 # Not needed in image
 /tests
 /report
-/demo
+# Keep demo assets in the image for on-page examples
+# (was: /demo)
 
 # Large/unused
 *.ipynb
@@ -33,6 +34,7 @@ venv
 *.png
 *.jpg
 *.json
+!demo/**
 
 # Web/node
 node_modules

@@ -19,3 +19,6 @@ alembic/versions/__pycache__/
 
 # Custom files
 future copy.txt
+
+# render optimizations
+render-optimization.md

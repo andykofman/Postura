@@ -12,6 +12,11 @@
       .title{ display:flex; align-items:center; justify-content:space-between; gap:12px }
       .links{ display:flex; gap:10px; flex-wrap:wrap }
       .link-green{ display:inline-block; padding:8px 12px; border-radius:999px; background:linear-gradient(135deg,#16a34a,#22c55e); color:#0B0F14; font-weight:700; text-decoration:none }
+      @media (max-width: 560px){
+        .title{ flex-direction: column; align-items: flex-start; gap: 8px }
+        .links{ width: 100% }
+        .link-green{ width: 100%; text-align: center }
+      }
       .muted{ color:var(--muted) }
       pre{ background:rgba(0,0,0,.35); border:1px solid var(--border); border-radius:10px; padding:10px; overflow:auto }
     </style>
@@ -39,21 +44,38 @@
     <script>
       const q = new URLSearchParams(location.search);
       const id = q.get('video_id');
-      document.getElementById('vidHint').textContent = `video_id: ${id||'unknown'}`;
+      const demo = q.get('demo');
+      const savedBase = (typeof localStorage!=='undefined'? localStorage.getItem('API_BASE') : '') || '';
+      const DEFAULT_BASE = 'https://postura-779u.onrender.com';
+      const API_BASE = (q.get('api') || savedBase || DEFAULT_BASE || '').replace(/\/$/, '');
+      function apiUrl(p){ return (API_BASE? (API_BASE + p) : p); }
+      const hint = document.getElementById('vidHint');
       const lnkPdf = document.getElementById('lnkPdf');
       const lnkJson = document.getElementById('lnkJson');
       const preview = document.getElementById('preview');
       const thumbs = document.getElementById('thumbs');
-      if(id){
-        lnkPdf.href = `/report/${id}.pdf`;
-        lnkJson.href = `/reports/${id}/summary.json`;
-        fetch(`/result/${id}`).then(r=>r.json()).then(data=>{
+      if(demo){
+        hint.textContent = `demo: ${demo}`;
+        const src = demo==='pushup'? '/ui/demo/summary_pushup.json' : '/ui/demo/summary_squats.json';
+        lnkPdf.removeAttribute('href'); lnkPdf.textContent='Open PDF report (demo not available)';
+        lnkJson.href = src;
+        fetch(src).then(r=>r.json()).then(data=>{
           preview.textContent = JSON.stringify(data.summary||data,null,2);
           const t=data.thumbnails||[];
-          thumbs.innerHTML = t.length? t.map(it=>`<figure style="border:1px solid var(--border); border-radius:10px; overflow:hidden; background:rgba(255,255,255,.02)"><img src="${it.path}" style="width:100%"/><figcaption style="padding:6px 8px; color:var(--muted)">Rep ${it.rep_id} • ${it.exercise}</figcaption></figure>`).join('') : '<div class="muted">No snapshots available</div>';
+          thumbs.innerHTML = t.length? t.map(it=>`<figure style="border:1px solid var(--border); border-radius:10px; overflow:hidden; background:rgba(255,255,255,.02)"><img src="${API_BASE? (API_BASE+it.path) : it.path}" style="width:100%"/><figcaption style="padding:6px 8px; color:var(--muted)">Rep ${it.rep_id} • ${it.exercise}</figcaption></figure>`).join('') : '<div class="muted">No snapshots available</div>';
+        }).catch(()=>{ preview.textContent='Failed to load demo'; });
+      } else if(id){
+        hint.textContent = `video_id: ${id}`;
+        lnkPdf.href = apiUrl(`/report/${id}.pdf`);
+        lnkJson.href = apiUrl(`/reports/${id}/summary.json`);
+        fetch(apiUrl(`/result/${id}`)).then(r=>r.json()).then(data=>{
+          preview.textContent = JSON.stringify(data.summary||data,null,2);
+          const t=data.thumbnails||[];
+          thumbs.innerHTML = t.length? t.map(it=>`<figure style="border:1px solid var(--border); border-radius:10px; overflow:hidden; background:rgba(255,255,255,.02)"><img src="${API_BASE? (API_BASE+it.path) : it.path}" style="width:100%"/><figcaption style="padding:6px 8px; color:var(--muted)">Rep ${it.rep_id} • ${it.exercise}</figcaption></figure>`).join('') : '<div class="muted">No snapshots available</div>';
         }).catch(()=>{ preview.textContent='Failed to load result'; });
-      }else{
-        preview.textContent = 'Missing video_id parameter';
+      } else {
+        hint.textContent = '';
+        preview.textContent = 'Missing video_id or demo parameter';
       }
     </script>
   </body>

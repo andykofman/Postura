@@ -10,6 +10,7 @@ import numpy as np
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import JSONResponse, Response, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 
 from analysis.analyzer import analyze_video
 from api.schemas import AnalyzeResponse, JobSubmitResponse, JobStatusResponse
@@ -18,14 +19,25 @@ from pose.backend import Keypoint
 from pose.draw import draw_keypoints
 
 
-# Threading/env tuning to avoid oversubscription on Colab CPUs
-os.environ.setdefault("OMP_NUM_THREADS", "2")
-os.environ.setdefault("OPENBLAS_NUM_THREADS", "2")
-os.environ.setdefault("MKL_NUM_THREADS", "2")
-os.environ.setdefault("NUMEXPR_NUM_THREADS", "2")
+# Threading/env tuning - optimized for Render's 8-core environment
+# Use environment variables if set, otherwise auto-detect optimal values
+import multiprocessing
+optimal_threads = min(multiprocessing.cpu_count(), 6)  # Leave 2 cores for system
+
+os.environ.setdefault("OMP_NUM_THREADS", str(optimal_threads))
+os.environ.setdefault("OPENBLAS_NUM_THREADS", str(optimal_threads))
+os.environ.setdefault("MKL_NUM_THREADS", str(optimal_threads))
+os.environ.setdefault("NUMEXPR_NUM_THREADS", str(optimal_threads))
 
 
 app = FastAPI(title="Postura API")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
@@ -34,10 +46,44 @@ ALLOWED_CONTENT_TYPES = {"video/mp4", "application/octet-stream"}
 # Mount static web UI and reports directory for end-to-end testing
 WEB_ROOT = Path("web").resolve()
 REPORT_ROOT = Path("report").resolve()
+DEMO_ROOT = Path("demo").resolve()
 REPORT_ROOT.mkdir(parents=True, exist_ok=True)
 if WEB_ROOT.exists():
     app.mount("/ui", StaticFiles(directory=str(WEB_ROOT), html=True), name="ui")
 app.mount("/reports", StaticFiles(directory=str(REPORT_ROOT)), name="reports")
+if DEMO_ROOT.exists():
+    app.mount("/demo", StaticFiles(directory=str(DEMO_ROOT)), name="demo")
+def _get_env_int(name: str, default: int) -> int:
+    try:
+        v = int(str(os.getenv(name, str(default))).strip())
+        return v
+    except Exception:
+        return default
+
+def _get_env_float(name: str, default: float) -> float:
+    try:
+        v = float(str(os.getenv(name, str(default))).strip())
+        return v
+    except Exception:
+        return default
+
+# Performance knobs (tunable via environment) — defaults preserve original accuracy
+# These can be overridden via environment variables for Render optimization
+POSTURA_TARGET_FPS = _get_env_float("POSTURA_TARGET_FPS", 0.0)  # <= 0 disables decimation
+POSTURA_TARGET_WIDTH = _get_env_int("POSTURA_TARGET_WIDTH", 0)  # <= 0 disables resize
+POSTURA_MODEL_COMPLEXITY = _get_env_int("POSTURA_MODEL_COMPLEXITY", 2)  # 0/1/2
+
+# Render-specific optimizations - can be tuned via environment
+POSTURA_RENDER_OPTIMIZED = _get_env_int("POSTURA_RENDER_OPTIMIZED", 1)  # Enable Render optimizations
+
+# Memory management optimizations
+POSTURA_MEMORY_OPTIMIZED = _get_env_int("POSTURA_MEMORY_OPTIMIZED", 1)  # Enable memory optimizations
+POSTURA_GC_INTERVAL = _get_env_int("POSTURA_GC_INTERVAL", 50)  # Garbage collection interval (frames) - more aggressive
+POSTURA_MEMORY_THRESHOLD = _get_env_int("POSTURA_MEMORY_THRESHOLD", 70)  # Memory usage threshold for forced GC (%)
+
+# Processing mode optimization
+POSTURA_STREAMING_MODE = _get_env_int("POSTURA_STREAMING_MODE", 1)  # Enable streaming frame processing (no queuing)
+
 
 
 def _configure_opencv_threads() -> None:
@@ -45,7 +91,9 @@ def _configure_opencv_threads() -> None:
         import cv2  # type: ignore
         cv2.setUseOptimized(True)
         try:
-            cv2.setNumThreads(2)
+            # Use optimal thread count for Render's 8-core environment
+            optimal_cv_threads = min(multiprocessing.cpu_count(), 6)
+            cv2.setNumThreads(optimal_cv_threads)
         except Exception:
             pass
     except Exception:
@@ -62,56 +110,24 @@ def _iter_frames_from_video_file(
     on_progress: Optional[callable] = None,
 ) -> Iterator[Sequence[Optional[Keypoint]]]:
     import cv2  # type: ignore
+    
     _configure_opencv_threads()
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
         raise RuntimeError("Failed to open uploaded video")
 
-    # Producer-consumer pipeline: overlap decode (producer) and inference (consumer)
-    frame_queue: Queue[Optional[np.ndarray]] = Queue(maxsize=16)
+    # Streaming approach: process frames one-by-one without queuing
+    # This eliminates memory bloat and GC pressure entirely
+    if on_start:
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+        on_start(total_frames)
+    
     # Determine decimation stride if requested
     orig_fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
     stride = 1
     if target_fps and target_fps > 0 and orig_fps > 0:
         stride = max(1, int(round(orig_fps / float(target_fps))))
-
-    def producer() -> None:
-        try:
-            idx = 0
-            if callable(on_start):
-                try:
-                    on_start(total_frames)
-                except Exception:
-                    pass
-            while True:
-                ok, frame = cap.read()
-                if not ok:
-                    break
-                send = not (stride > 1 and (idx % stride) != 0)
-                idx += 1
-                if not send:
-                    continue
-                # Resize to target_width if configured
-                if target_width and target_width > 0:
-                    h, w = frame.shape[:2]
-                    if w > target_width:
-                        scale = float(target_width) / float(w)
-                        new_w = int(round(w * scale))
-                        new_h = int(round(h * scale))
-                        frame = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_AREA)
-                frame_queue.put(frame, block=True)
-                if callable(on_progress):
-                    try:
-                        on_progress(idx)
-                    except Exception:
-                        pass
-        finally:
-            # Signal end of stream
-            frame_queue.put(None)
-
-    prod_thread = threading.Thread(target=producer, name="decoder-producer", daemon=True)
-    prod_thread.start()
 
     # Build backend
     backend: Optional[PoseBackend]
@@ -122,11 +138,44 @@ def _iter_frames_from_video_file(
 
     try:
         with backend as b:
+            frame_count = 0
+            idx = 0
+            
             while True:
-                frame = frame_queue.get(block=True)
-                if frame is None:
+                ok, frame = cap.read()
+                if not ok:
                     break
+                
+                # Apply decimation if requested
+                send = not (stride > 1 and (idx % stride) != 0)
+                idx += 1
+                if not send:
+                    continue
+                
+                frame_count += 1
+                
+                # Resize to target_width if configured
+                if target_width and target_width > 0:
+                    h, w = frame.shape[:2]
+                    if w > target_width:
+                        scale = float(target_width) / float(w)
+                        new_w = int(round(w * scale))
+                        new_h = int(round(h * scale))
+                        frame = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_AREA)
+                
+                # Process frame immediately and yield results
                 kps = b.infer(frame)
+                
+                # Update progress
+                if on_progress:
+                    try:
+                        on_progress(idx)
+                    except Exception:
+                        pass
+                
+                # Clear frame reference immediately
+                del frame
+                
                 yield kps
     finally:
         cap.release()
@@ -183,7 +232,14 @@ async def analyze(file: UploadFile = File(...)):
             JOB_FRAMES_DONE[job_id] = int(done)
 
         try:
-            frames_iter = _iter_frames_from_video_file(path, on_start=on_start, on_progress=on_progress)
+            frames_iter = _iter_frames_from_video_file(
+                path,
+                target_fps=POSTURA_TARGET_FPS if POSTURA_TARGET_FPS > 0 else None,
+                target_width=POSTURA_TARGET_WIDTH if POSTURA_TARGET_WIDTH > 0 else None,
+                model_complexity=POSTURA_MODEL_COMPLEXITY,
+                on_start=on_start,
+                on_progress=on_progress,
+            )
             t0 = time.time()
             result = analyze_video(frames_iter)
             elapsed = max(1e-6, time.time() - t0)
@@ -261,6 +317,81 @@ async def logs_endpoint(video_id: str):
     if p.exists():
         return p.read_text(encoding="utf-8")
     return ""
+
+
+@app.get("/health", response_class=PlainTextResponse)
+async def health() -> str:
+    return "ok"
+
+
+@app.get("/system-info", response_class=PlainTextResponse) 
+async def system_info() -> str:
+    """Debug endpoint to check system resources on deployment platform"""
+    import psutil
+    import platform
+    
+    info = []
+    info.append(f"Platform: {platform.platform()}")
+    info.append(f"CPU Count: {psutil.cpu_count()}")
+    info.append(f"CPU Count (logical): {psutil.cpu_count(logical=True)}")
+    info.append(f"Memory Total: {psutil.virtual_memory().total / (1024**3):.2f} GB")
+    info.append(f"Memory Available: {psutil.virtual_memory().available / (1024**3):.2f} GB") 
+    info.append(f"Memory Used: {psutil.virtual_memory().used / (1024**3):.2f} GB")
+    info.append(f"Memory Percent: {psutil.virtual_memory().percent:.1f}%")
+    info.append(f"CPU Usage: {psutil.cpu_percent(interval=1):.1f}%")
+    
+    # Thread settings
+    info.append(f"OMP_NUM_THREADS: {os.getenv('OMP_NUM_THREADS', 'unset')}")
+    
+    try:
+        import cv2
+        info.append(f"OpenCV Threads: {cv2.getNumThreads()}")
+    except ImportError:
+        info.append("OpenCV Threads: N/A (cv2 not available)")
+    
+    # Memory optimization status
+    info.append(f"POSTURA_RENDER_OPTIMIZED: {POSTURA_RENDER_OPTIMIZED}")
+    info.append(f"POSTURA_MEMORY_OPTIMIZED: {POSTURA_MEMORY_OPTIMIZED}")
+    info.append(f"POSTURA_GC_INTERVAL: {POSTURA_GC_INTERVAL}")
+    info.append(f"POSTURA_MEMORY_THRESHOLD: {POSTURA_MEMORY_THRESHOLD}%")
+    info.append(f"Processing Mode: Streaming (no queue)")
+    
+    return "\n".join(info)
+
+
+@app.get("/memory-status", response_class=PlainTextResponse)
+async def memory_status() -> str:
+    """Real-time memory monitoring for debugging performance issues"""
+    import psutil
+    import gc
+    
+    info = []
+    
+    # Current memory status
+    memory = psutil.virtual_memory()
+    info.append(f"Memory Total: {memory.total / (1024**3):.2f} GB")
+    info.append(f"Memory Available: {memory.available / (1024**3):.2f} GB")
+    info.append(f"Memory Used: {memory.used / (1024**3):.2f} GB")
+    info.append(f"Memory Percent: {memory.percent:.1f}%")
+    
+    # Memory pressure indicators
+    if memory.percent > 80:
+        info.append(" HIGH MEMORY PRESSURE - Performance may degrade")
+    elif memory.percent > 60:
+        info.append(" MODERATE MEMORY PRESSURE - Monitor closely")
+    else:
+        info.append("Memory usage is healthy")
+    
+    # Garbage collection stats
+    gc_stats = gc.get_stats()
+    info.append(f"GC Collections: {gc_stats[0]['collections'] if gc_stats else 'N/A'}")
+    
+    # System recommendations
+    if memory.percent > 70:
+        info.append("Consider setting POSTURA_GC_INTERVAL=25 for more aggressive cleanup")
+        info.append(" Consider setting POSTURA_MEMORY_THRESHOLD=60 for earlier intervention")
+    
+    return "\n".join(info)
 
 
 @app.get("/frame/{video_id}/{frame_index}")

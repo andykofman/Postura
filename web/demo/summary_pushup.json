@@ -1,0 +1,63 @@
+{
+  "video_id": "a06b8c0b-9a19-498e-b354-43b71c55bd8d",
+  "summary": {
+    "squats": {
+      "total_reps": 0,
+      "good_form_reps": 0,
+      "common_issues": []
+    },
+    "pushups": {
+      "total_reps": 5,
+      "good_form_reps": 5,
+      "common_issues": []
+    }
+  },
+  "frame_data": [
+    {
+      "frame_index": 55,
+      "exercise": "pushup",
+      "rep_id": 1,
+      "is_form_ok": true,
+      "angles": {
+        "elbow": 29.489725626571662
+      }
+    },
+    {
+      "frame_index": 143,
+      "exercise": "pushup",
+      "rep_id": 2,
+      "is_form_ok": true,
+      "angles": {
+        "elbow": 57.694692882940046
+      }
+    },
+    {
+      "frame_index": 235,
+      "exercise": "pushup",
+      "rep_id": 3,
+      "is_form_ok": true,
+      "angles": {
+        "elbow": 65.11618649499108
+      }
+    },
+    {
+      "frame_index": 310,
+      "exercise": "pushup",
+      "rep_id": 4,
+      "is_form_ok": true,
+      "angles": {
+        "elbow": 76.98157644754876
+      }
+    },
+    {
+      "frame_index": 384,
+      "exercise": "pushup",
+      "rep_id": 5,
+      "is_form_ok": true,
+      "angles": {
+        "elbow": 73.24061317295798
+      }
+    }
+  ]
+}
+
