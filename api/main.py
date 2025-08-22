@@ -78,7 +78,8 @@ POSTURA_RENDER_OPTIMIZED = _get_env_int("POSTURA_RENDER_OPTIMIZED", 1)  # Enable
 
 # Memory management optimizations
 POSTURA_MEMORY_OPTIMIZED = _get_env_int("POSTURA_MEMORY_OPTIMIZED", 1)  # Enable memory optimizations
-POSTURA_GC_INTERVAL = _get_env_int("POSTURA_GC_INTERVAL", 100)  # Garbage collection interval (frames)
+POSTURA_GC_INTERVAL = _get_env_int("POSTURA_GC_INTERVAL", 50)  # Garbage collection interval (frames) - more aggressive
+POSTURA_MEMORY_THRESHOLD = _get_env_int("POSTURA_MEMORY_THRESHOLD", 70)  # Memory usage threshold for forced GC (%)
 
 
 
@@ -107,6 +108,7 @@ def _iter_frames_from_video_file(
 ) -> Iterator[Sequence[Optional[Keypoint]]]:
     import cv2  # type: ignore
     import gc  # For memory management
+    import psutil  # For real-time memory monitoring
     
     _configure_opencv_threads()
     cap = cv2.VideoCapture(str(video_path))
@@ -115,7 +117,7 @@ def _iter_frames_from_video_file(
 
     # Producer-consumer pipeline: overlap decode (producer) and inference (consumer)
     # Optimize queue size for Render's 8-core environment - reduced for memory efficiency
-    queue_size = 16 if POSTURA_RENDER_OPTIMIZED else 8  # Reduced from 32 to prevent memory bloat
+    queue_size = 12 if POSTURA_RENDER_OPTIMIZED else 6  # Further reduced for aggressive memory management
     frame_queue: Queue[Optional[np.ndarray]] = Queue(maxsize=queue_size)
     # Determine decimation stride if requested
     orig_fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
@@ -176,17 +178,35 @@ def _iter_frames_from_video_file(
                 if frame is None:
                     break
                 
-                # Memory management: periodic cleanup every N frames
+                # Advanced memory management: real-time monitoring + adaptive cleanup
                 frame_count += 1
-                if POSTURA_MEMORY_OPTIMIZED and frame_count % POSTURA_GC_INTERVAL == 0:
-                    gc.collect()  # Force garbage collection
+                
+                # Check memory usage every 25 frames
+                if POSTURA_MEMORY_OPTIMIZED and frame_count % 25 == 0:
+                    memory_percent = psutil.virtual_memory().percent
+                    
+                    # Force GC if memory usage exceeds threshold
+                    if memory_percent > POSTURA_MEMORY_THRESHOLD:
+                        gc.collect()
+                        # Additional aggressive cleanup
+                        if memory_percent > 80:
+                            gc.collect()  # Double GC for high memory pressure
+                
+                # Regular periodic cleanup
+                elif POSTURA_MEMORY_OPTIMIZED and frame_count % POSTURA_GC_INTERVAL == 0:
+                    gc.collect()
                 
                 kps = b.infer(frame)
                 yield kps
                 
-                # Clear frame reference to help garbage collection
+                # Immediate frame cleanup for aggressive memory management
                 if POSTURA_MEMORY_OPTIMIZED:
                     del frame
+                    # Force cleanup every 10 frames if memory pressure is high
+                    if frame_count % 10 == 0:
+                        memory_percent = psutil.virtual_memory().percent
+                        if memory_percent > 60:  # Lower threshold for frequent cleanup
+                            gc.collect()
     finally:
         cap.release()
         if POSTURA_MEMORY_OPTIMIZED:
@@ -363,7 +383,45 @@ async def system_info() -> str:
     
     # Memory optimization status
     info.append(f"POSTURA_RENDER_OPTIMIZED: {POSTURA_RENDER_OPTIMIZED}")
-    info.append(f"Queue Size: {16 if POSTURA_RENDER_OPTIMIZED else 8}")
+    info.append(f"POSTURA_MEMORY_OPTIMIZED: {POSTURA_MEMORY_OPTIMIZED}")
+    info.append(f"POSTURA_GC_INTERVAL: {POSTURA_GC_INTERVAL}")
+    info.append(f"POSTURA_MEMORY_THRESHOLD: {POSTURA_MEMORY_THRESHOLD}%")
+    info.append(f"Queue Size: {12 if POSTURA_RENDER_OPTIMIZED else 6}")
+    
+    return "\n".join(info)
+
+
+@app.get("/memory-status", response_class=PlainTextResponse)
+async def memory_status() -> str:
+    """Real-time memory monitoring for debugging performance issues"""
+    import psutil
+    import gc
+    
+    info = []
+    
+    # Current memory status
+    memory = psutil.virtual_memory()
+    info.append(f"Memory Total: {memory.total / (1024**3):.2f} GB")
+    info.append(f"Memory Available: {memory.available / (1024**3):.2f} GB")
+    info.append(f"Memory Used: {memory.used / (1024**3):.2f} GB")
+    info.append(f"Memory Percent: {memory.percent:.1f}%")
+    
+    # Memory pressure indicators
+    if memory.percent > 80:
+        info.append(" HIGH MEMORY PRESSURE - Performance may degrade")
+    elif memory.percent > 60:
+        info.append(" MODERATE MEMORY PRESSURE - Monitor closely")
+    else:
+        info.append("Memory usage is healthy")
+    
+    # Garbage collection stats
+    gc_stats = gc.get_stats()
+    info.append(f"GC Collections: {gc_stats[0]['collections'] if gc_stats else 'N/A'}")
+    
+    # System recommendations
+    if memory.percent > 70:
+        info.append("Consider setting POSTURA_GC_INTERVAL=25 for more aggressive cleanup")
+        info.append(" Consider setting POSTURA_MEMORY_THRESHOLD=60 for earlier intervention")
     
     return "\n".join(info)
 
